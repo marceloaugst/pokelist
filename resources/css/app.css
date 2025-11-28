@@ -1,0 +1,150 @@
+@import url("https://fonts.googleapis.com/css2?family=Fira+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Pokédex Custom Styles */
+@layer components {
+    .pokedex-card {
+        @apply bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl shadow-xl border border-slate-700 overflow-hidden transition-all duration-300 hover:shadow-2xl hover:shadow-red-500/20 hover:scale-105 hover:border-red-500/50;
+    }
+
+    .pokedex-button {
+        @apply bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition-all duration-300 transform hover:scale-105 hover:shadow-red-500/30;
+    }
+
+    .stat-bar {
+        @apply h-2 bg-slate-700 rounded-full overflow-hidden transition-all duration-500;
+    }
+
+    .stat-fill {
+        @apply h-full rounded-full transition-all duration-500;
+    }
+
+    .type-badge {
+        @apply inline-block px-3 py-1 rounded text-xs font-bold text-white shadow-sm;
+        font-family: "Fira Sans", sans-serif;
+        font-style: italic;
+        font-weight: 700;
+    }
+
+    .pokemon-sprite {
+        @apply w-32 h-32 object-contain drop-shadow-lg transition-transform duration-300 hover:scale-110;
+    }
+
+    /* Fonte Fira Sans para títulos da Pokédex */
+    .pokedex-title {
+        font-family: "Fira Sans", sans-serif;
+        font-style: italic;
+        font-weight: 700;
+    }
+
+    /* Estilo de tabela Pokédex */
+    .pokedex-table {
+        @apply w-full text-sm;
+    }
+
+    .pokedex-table th {
+        @apply text-left py-2 pr-4 text-slate-400 font-normal align-top whitespace-nowrap;
+        width: 120px;
+    }
+
+    .pokedex-table td {
+        @apply py-2 text-white font-medium;
+    }
+
+    /* Animação de pulso para Pokébola */
+    .pokeball-logo {
+        filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.5));
+        animation: pokeball-glow 2s ease-in-out infinite;
+    }
+
+    @keyframes pokeball-glow {
+        0%,
+        100% {
+            filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.5));
+        }
+        50% {
+            filter: drop-shadow(0 0 15px rgba(239, 68, 68, 0.8));
+        }
+    }
+
+    /* Cards com efeito de brilho */
+    .glow-card {
+        @apply relative overflow-hidden;
+    }
+
+    .glow-card::before {
+        content: "";
+        @apply absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full;
+        animation: shimmer 3s infinite;
+    }
+
+    @keyframes shimmer {
+        100% {
+            transform: translateX(100%);
+        }
+    }
+
+    /* Estilos para inputs no tema escuro */
+    .dark-input {
+        @apply bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-yellow-500 focus:ring-yellow-500;
+    }
+
+    /* Botões de tipo Pokemon */
+    .pokemon-type-fire {
+        @apply bg-gradient-to-r from-orange-500 to-red-500;
+    }
+    .pokemon-type-water {
+        @apply bg-gradient-to-r from-blue-500 to-cyan-500;
+    }
+    .pokemon-type-grass {
+        @apply bg-gradient-to-r from-green-500 to-emerald-500;
+    }
+    .pokemon-type-electric {
+        @apply bg-gradient-to-r from-yellow-400 to-amber-500;
+    }
+    .pokemon-type-psychic {
+        @apply bg-gradient-to-r from-pink-500 to-purple-500;
+    }
+    .pokemon-type-ice {
+        @apply bg-gradient-to-r from-cyan-400 to-blue-400;
+    }
+    .pokemon-type-dragon {
+        @apply bg-gradient-to-r from-indigo-600 to-purple-600;
+    }
+    .pokemon-type-dark {
+        @apply bg-gradient-to-r from-slate-700 to-slate-900;
+    }
+    .pokemon-type-fairy {
+        @apply bg-gradient-to-r from-pink-400 to-rose-400;
+    }
+    .pokemon-type-fighting {
+        @apply bg-gradient-to-r from-red-600 to-red-800;
+    }
+    .pokemon-type-flying {
+        @apply bg-gradient-to-r from-indigo-400 to-sky-400;
+    }
+    .pokemon-type-poison {
+        @apply bg-gradient-to-r from-purple-600 to-fuchsia-600;
+    }
+    .pokemon-type-ground {
+        @apply bg-gradient-to-r from-amber-600 to-yellow-700;
+    }
+    .pokemon-type-rock {
+        @apply bg-gradient-to-r from-stone-500 to-stone-700;
+    }
+    .pokemon-type-bug {
+        @apply bg-gradient-to-r from-lime-500 to-green-600;
+    }
+    .pokemon-type-ghost {
+        @apply bg-gradient-to-r from-purple-700 to-indigo-800;
+    }
+    .pokemon-type-steel {
+        @apply bg-gradient-to-r from-slate-400 to-slate-600;
+    }
+    .pokemon-type-normal {
+        @apply bg-gradient-to-r from-gray-400 to-gray-600;
+    }
+}
