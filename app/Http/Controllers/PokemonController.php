@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\UserPokemon;
+use App\Models\UserTeam;
 use App\Services\PokeApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -25,9 +26,35 @@ class PokemonController extends Controller
         return view('pokemons.index', compact('pokemons'));
     }
 
-    public function create()
+    public function create(Request $request)
     {
-        return view('pokemons.create');
+        $pokemonData = null;
+        $games = $this->pokeApi->getGames();
+
+        // Se um pokemon_id foi passado via URL, buscar os dados
+        if ($request->has('pokemon_id')) {
+            $pokemonId = $request->get('pokemon_id');
+            $pokemonData = $this->pokeApi->getPokemon($pokemonId);
+        }
+
+        return view('pokemons.create', compact('pokemonData', 'games'));
+    }
+
+    public function getPokemonForCreate(Request $request)
+    {
+        $pokemonId = $request->get('id');
+
+        if (!$pokemonId) {
+            return response()->json(['error' => 'ID do Pokémon é obrigatório'], 400);
+        }
+
+        $pokemonData = $this->pokeApi->getPokemon($pokemonId);
+
+        if (!$pokemonData) {
+            return response()->json(['error' => 'Pokémon não encontrado'], 404);
+        }
+
+        return response()->json($pokemonData);
     }
 
     public function search(Request $request)
@@ -37,6 +64,7 @@ class PokemonController extends Controller
         ]);
 
         $searchTerm = trim($request->pokemon_search);
+        $games = $this->pokeApi->getGames();
 
         $pokemonData = $this->pokeApi->getPokemon($searchTerm);
 
@@ -44,7 +72,7 @@ class PokemonController extends Controller
             return back()->with('error', 'Pokémon "' . $searchTerm . '" não encontrado! Tente usar o nome em inglês (ex: charmander) ou o ID numérico.');
         }
 
-        return view('pokemons.create', compact('pokemonData'));
+        return view('pokemons.create', compact('pokemonData', 'games'));
     }
 
     public function searchSuggestions(Request $request)
@@ -146,5 +174,129 @@ class PokemonController extends Controller
         $pokemon->delete();
 
         return redirect()->route('pokemons.index')->with('success', 'Pokémon removido com sucesso!');
+    }
+
+    public function pokedex()
+    {
+        // Carregar os primeiros 20 Pokémon para carregamento mais rápido
+        $pokemons = $this->loadPokemonsFromApi(20, 0);
+        return view('pokedex.index', compact('pokemons'));
+    }
+
+    public function loadMorePokedex(Request $request)
+    {
+        $offset = $request->get('offset', 0);
+        $limit = $request->get('limit', 20); // Reduzir para 20 por vez
+
+        $pokemons = $this->loadPokemonsFromApi($limit, $offset);
+
+        return response()->json($pokemons);
+    }
+
+    private function loadPokemonsFromApi($limit, $offset)
+    {
+        $pokemons = [];
+
+        // Usar um método mais eficiente para carregar Pokémon em lote
+        try {
+            for ($i = $offset + 1; $i <= $offset + $limit && $i <= 1010; $i++) {
+                $pokemonData = $this->pokeApi->getPokemon($i);
+
+                if ($pokemonData) {
+                    $pokemons[] = [
+                        'id' => $pokemonData['id'],
+                        'name' => $pokemonData['name'],
+                        'sprite' => $pokemonData['sprite'],
+                        'types' => $pokemonData['types'],
+                        'type_colors' => $pokemonData['type_colors'],
+                        'weaknesses' => $pokemonData['weaknesses']
+                    ];
+                } else {
+                    // Se um Pokémon não for encontrado, continue com o próximo
+                    continue;
+                }
+
+                // Pequeno delay para evitar sobrecarga da API
+                if ($i % 5 == 0) {
+                    usleep(50000); // 50ms de pausa a cada 5 Pokémon
+                }
+            }
+        } catch (\Exception $e) {
+            Log::error('Erro ao carregar Pokémon da API', ['error' => $e->getMessage(), 'offset' => $offset]);
+        }
+
+        return $pokemons;
+    }
+
+    public function team()
+    {
+        $user = Auth::user();
+        $teamPokemons = $user->teamPokemons()->get();
+
+        // Criar array com 6 posições
+        $team = [];
+        for ($i = 1; $i <= 6; $i++) {
+            $teamPokemon = $teamPokemons->firstWhere('position', $i);
+            $team[$i] = $teamPokemon ? $teamPokemon->userPokemon : null;
+        }
+
+        // Definir trainer baseado no gênero
+        $trainerData = [
+            'name' => $user->gender === 'female' ? 'May' : 'Brendan',
+            'sprite' => $user->gender === 'female'
+                ? 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/other/official-artwork/10025.png' // May
+                : 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/other/official-artwork/10026.png', // Brendan
+            'gender' => $user->gender
+        ];
+
+        return view('pokemons.team', compact('team', 'trainerData'));
+    }
+
+    public function addToTeam(Request $request, UserPokemon $pokemon)
+    {
+        $this->authorize('view', $pokemon);
+
+        // Verificar se o Pokémon já está no time
+        if ($pokemon->isInTeam()) {
+            return back()->with('error', 'Este Pokémon já está no seu time!');
+        }
+
+        // Verificar se há espaço no time (máximo 6)
+        $currentTeamCount = Auth::user()->userTeam()->count();
+        if ($currentTeamCount >= 6) {
+            return back()->with('error', 'Seu time já está completo! (máximo 6 Pokémon)');
+        }
+
+        // Encontrar próxima posição disponível
+        $occupiedPositions = Auth::user()->userTeam()->pluck('position')->toArray();
+        $nextPosition = 1;
+        for ($i = 1; $i <= 6; $i++) {
+            if (!in_array($i, $occupiedPositions)) {
+                $nextPosition = $i;
+                break;
+            }
+        }
+
+        Auth::user()->userTeam()->create([
+            'user_pokemon_id' => $pokemon->id,
+            'position' => $nextPosition
+        ]);
+
+        return back()->with('success', $pokemon->pokemon_name . ' foi adicionado ao seu time!');
+    }
+
+    public function removeFromTeam(UserPokemon $pokemon)
+    {
+        $this->authorize('view', $pokemon);
+
+        $teamEntry = Auth::user()->userTeam()->where('user_pokemon_id', $pokemon->id)->first();
+
+        if (!$teamEntry) {
+            return back()->with('error', 'Este Pokémon não está no seu time!');
+        }
+
+        $teamEntry->delete();
+
+        return back()->with('success', $pokemon->pokemon_name . ' foi removido do seu time!');
     }
 }

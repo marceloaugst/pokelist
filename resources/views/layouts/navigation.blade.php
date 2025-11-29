@@ -1,4 +1,4 @@
-﻿<nav x-data="{ open: false }" class="border-b border-slate-700 bg-gradient-to-r from-slate-800 to-slate-900 shadow-xl">
+﻿<nav x-data="{ open: false }" class="border-b border-slate-600 bg-gradient-to-r from-slate-700 to-slate-800 shadow-xl">
     <!-- Primary Navigation Menu -->
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div class="flex h-16 justify-between">
@@ -16,8 +16,16 @@
                 <!-- Navigation Links -->
                 <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
                     <a href="{{ route('pokemons.index') }}"
-                        class="{{ request()->routeIs('pokemons.*') ? 'border-yellow-400 text-yellow-400' : 'border-transparent text-slate-300 hover:text-yellow-400 hover:border-yellow-400/50' }} inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium leading-5 transition duration-150 ease-in-out">
+                        class="{{ request()->routeIs('pokemons.index') ? 'border-yellow-400 text-yellow-400' : 'border-transparent text-slate-300 hover:text-yellow-400 hover:border-yellow-400/50' }} inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium leading-5 transition duration-150 ease-in-out">
                         {{ __('Meus Pokémons') }}
+                    </a>
+                    <a href="{{ route('pokemons.team') }}"
+                        class="{{ request()->routeIs('pokemons.team') ? 'border-yellow-400 text-yellow-400' : 'border-transparent text-slate-300 hover:text-yellow-400 hover:border-yellow-400/50' }} inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium leading-5 transition duration-150 ease-in-out">
+                        {{ __('Meu Time') }}
+                    </a>
+                    <a href="{{ route('pokedex.index') }}"
+                        class="{{ request()->routeIs('pokedex.*') ? 'border-yellow-400 text-yellow-400' : 'border-transparent text-slate-300 hover:text-yellow-400 hover:border-yellow-400/50' }} inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium leading-5 transition duration-150 ease-in-out">
+                        {{ __('Pokédex') }}
                     </a>
                 </div>
             </div>
@@ -50,8 +58,7 @@
                         <form method="POST" action="{{ route('logout') }}">
                             @csrf
 
-                            <x-dropdown-link :href="route('logout')"
-                                onclick="event.preventDefault();
+                            <x-dropdown-link :href="route('logout')" onclick="event.preventDefault();
                                                 this.closest('form').submit();">
                                 {{ __('Log Out') }}
                             </x-dropdown-link>
@@ -80,8 +87,16 @@
     <div :class="{ 'block': open, 'hidden': !open }" class="hidden bg-slate-800 sm:hidden">
         <div class="space-y-1 pb-3 pt-2">
             <a href="{{ route('pokemons.index') }}"
-                class="{{ request()->routeIs('pokemons.*') ? 'border-yellow-400 text-yellow-400 bg-slate-700' : 'border-transparent text-slate-300 hover:text-yellow-400 hover:bg-slate-700 hover:border-yellow-400' }} block w-full border-l-4 py-2 pe-4 ps-3 text-start text-base font-medium transition duration-150 ease-in-out">
+                class="{{ request()->routeIs('pokemons.index') ? 'border-yellow-400 text-yellow-400 bg-slate-700' : 'border-transparent text-slate-300 hover:text-yellow-400 hover:bg-slate-700 hover:border-yellow-400' }} block w-full border-l-4 py-2 pe-4 ps-3 text-start text-base font-medium transition duration-150 ease-in-out">
                 {{ __('Meus Pokémons') }}
+            </a>
+            <a href="{{ route('pokemons.team') }}"
+                class="{{ request()->routeIs('pokemons.team') ? 'border-yellow-400 text-yellow-400 bg-slate-700' : 'border-transparent text-slate-300 hover:text-yellow-400 hover:bg-slate-700 hover:border-yellow-400' }} block w-full border-l-4 py-2 pe-4 ps-3 text-start text-base font-medium transition duration-150 ease-in-out">
+                {{ __('Meu Time') }}
+            </a>
+            <a href="{{ route('pokedex.index') }}"
+                class="{{ request()->routeIs('pokedex.*') ? 'border-yellow-400 text-yellow-400 bg-slate-700' : 'border-transparent text-slate-300 hover:text-yellow-400 hover:bg-slate-700 hover:border-yellow-400' }} block w-full border-l-4 py-2 pe-4 ps-3 text-start text-base font-medium transition duration-150 ease-in-out">
+                {{ __('Pokédex') }}
             </a>
         </div>
 

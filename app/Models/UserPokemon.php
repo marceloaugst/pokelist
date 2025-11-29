@@ -95,6 +95,16 @@ class UserPokemon extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function userTeam()
+    {
+        return $this->hasOne(UserTeam::class);
+    }
+
+    public function isInTeam(): bool
+    {
+        return $this->userTeam()->exists();
+    }
+
     // Calcula a porcentagem do stat do jogo em relação ao base stat
     public function getStatPercentage(string $stat): float
     {

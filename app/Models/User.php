@@ -22,6 +22,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'gender',
     ];
 
     /**
@@ -50,5 +51,17 @@ class User extends Authenticatable
     public function userPokemons(): HasMany
     {
         return $this->hasMany(UserPokemon::class);
+    }
+
+    public function userTeam(): HasMany
+    {
+        return $this->hasMany(UserTeam::class);
+    }
+
+    public function teamPokemons()
+    {
+        return $this->hasMany(UserTeam::class)
+            ->with('userPokemon')
+            ->orderBy('position');
     }
 }
