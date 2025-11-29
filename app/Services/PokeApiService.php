@@ -60,7 +60,11 @@ class PokeApiService
             $endpoint = is_numeric($id) ? $id : strtolower(trim($id));
             $url = self::BASE_URL . "/pokemon/{$endpoint}";
 
-            $response = Http::withOptions(['verify' => false])->timeout(10)->get($url);
+            // Usar timeout menor e verificação SSL desabilitada
+            $response = Http::withOptions(['verify' => false])
+                ->timeout(5)
+                ->retry(2, 100) // Retry 2 vezes com 100ms de delay
+                ->get($url);
 
             if ($response->successful()) {
                 $data = $response->json();
@@ -71,7 +75,12 @@ class PokeApiService
                     ?? $data['sprites']['front_default']
                     ?? null;
 
-                // Buscar dados da espécie para informações adicionais
+                // Para a Pokédex nacional, vamos usar dados mais simples e rápidos
+                if (!isset($data['species'])) {
+                    return $this->getBasicPokemonData($data, $types, $sprite);
+                }
+
+                // Buscar dados da espécie para informações adicionais (apenas se necessário)
                 $speciesData = $this->getSpeciesData($data['species']['url']);
 
                 // Buscar evoluções
@@ -143,9 +152,32 @@ class PokeApiService
 
             return null;
         } catch (\Exception $e) {
-            // Em caso de erro, retorna null
+            Log::error('Erro na API Pokémon', ['id' => $id, 'error' => $e->getMessage()]);
             return null;
         }
+    }
+
+    private function getBasicPokemonData($data, $types, $sprite)
+    {
+        return [
+            'id' => $data['id'],
+            'name' => ucfirst($data['name']),
+            'sprite' => $sprite,
+            'stats' => [
+                'hp' => $this->getStat($data['stats'], 'hp'),
+                'attack' => $this->getStat($data['stats'], 'attack'),
+                'defense' => $this->getStat($data['stats'], 'defense'),
+                'sp_attack' => $this->getStat($data['stats'], 'special-attack'),
+                'sp_defense' => $this->getStat($data['stats'], 'special-defense'),
+                'speed' => $this->getStat($data['stats'], 'speed'),
+            ],
+            'types' => $types,
+            'type_colors' => collect($types)->mapWithKeys(fn($type) => [$type => self::TYPE_COLORS[$type] ?? '#777'])->toArray(),
+            'weaknesses' => $this->getWeaknesses($types),
+            'height' => $data['height'] / 10,
+            'weight' => $data['weight'] / 10,
+            'base_experience' => $data['base_experience'] ?? 0,
+        ];
     }
 
     private function getSpeciesData(string $url): array
@@ -459,21 +491,51 @@ class PokeApiService
 
     public function searchPokemonByName(string $query)
     {
-        // Lista básica de pokémons populares para busca rápida
-        $basicPokemonList = $this->getBasicPokemonList();
-
         $query = strtolower(trim($query));
 
         if (empty($query)) {
             return collect();
         }
 
-        return collect($basicPokemonList)
+        // Se é um número, buscar por ID
+        if (is_numeric($query)) {
+            $pokemonId = (int) $query;
+            if ($pokemonId > 0 && $pokemonId <= 1010) {
+                return collect([[
+                    'id' => $pokemonId,
+                    'name' => 'pokemon-' . $pokemonId,
+                    'display_name' => 'Pokémon #' . $pokemonId
+                ]]);
+            }
+        }
+
+        // Lista básica de pokémons populares para busca rápida
+        $basicPokemonList = $this->getBasicPokemonList();
+
+        $results = collect($basicPokemonList)
             ->filter(function ($pokemon) use ($query) {
                 return str_contains(strtolower($pokemon['name']), $query) ||
                     str_contains((string)$pokemon['id'], $query);
-            })
-            ->take(10);
+            });
+
+        // Se não encontrou resultados na lista básica e o query tem pelo menos 3 caracteres,
+        // tentar buscar na API
+        if ($results->isEmpty() && strlen($query) >= 3) {
+            try {
+                $pokemonData = $this->getPokemon($query);
+                if ($pokemonData) {
+                    $results = collect([[
+                        'id' => $pokemonData['id'],
+                        'name' => strtolower($pokemonData['name']),
+                        'display_name' => $pokemonData['name']
+                    ]]);
+                }
+            } catch (\Exception $e) {
+                // Se falhar na busca da API, continuar com resultado vazio
+            }
+        }
+
+        return $results->take(10);
     }
 
     private function getBasicPokemonList()
@@ -503,6 +565,34 @@ class PokeApiService
             ['id' => 143, 'name' => 'snorlax', 'display_name' => 'Snorlax'],
             ['id' => 150, 'name' => 'mewtwo', 'display_name' => 'Mewtwo'],
             ['id' => 151, 'name' => 'mew', 'display_name' => 'Mew'],
+            // Pokémon da 5ª geração
+            ['id' => 610, 'name' => 'axew', 'display_name' => 'Axew'],
+            ['id' => 611, 'name' => 'fraxure', 'display_name' => 'Fraxure'],
+            ['id' => 612, 'name' => 'haxorus', 'display_name' => 'Haxorus'],
+            ['id' => 495, 'name' => 'snivy', 'display_name' => 'Snivy'],
+            ['id' => 498, 'name' => 'tepig', 'display_name' => 'Tepig'],
+            ['id' => 501, 'name' => 'oshawott', 'display_name' => 'Oshawott'],
+            ['id' => 570, 'name' => 'zorua', 'display_name' => 'Zorua'],
+            ['id' => 571, 'name' => 'zoroark', 'display_name' => 'Zoroark'],
+            // Pokémon da 4ª geração
+            ['id' => 387, 'name' => 'turtwig', 'display_name' => 'Turtwig'],
+            ['id' => 390, 'name' => 'chimchar', 'display_name' => 'Chimchar'],
+            ['id' => 393, 'name' => 'piplup', 'display_name' => 'Piplup'],
+            ['id' => 447, 'name' => 'riolu', 'display_name' => 'Riolu'],
+            ['id' => 448, 'name' => 'lucario', 'display_name' => 'Lucario'],
+            // Pokémon da 3ª geração
+            ['id' => 252, 'name' => 'treecko', 'display_name' => 'Treecko'],
+            ['id' => 255, 'name' => 'torchic', 'display_name' => 'Torchic'],
+            ['id' => 258, 'name' => 'mudkip', 'display_name' => 'Mudkip'],
+            ['id' => 280, 'name' => 'ralts', 'display_name' => 'Ralts'],
+            ['id' => 371, 'name' => 'bagon', 'display_name' => 'Bagon'],
+            // Pokémon da 2ª geração
+            ['id' => 152, 'name' => 'chikorita', 'display_name' => 'Chikorita'],
+            ['id' => 155, 'name' => 'cyndaquil', 'display_name' => 'Cyndaquil'],
+            ['id' => 158, 'name' => 'totodile', 'display_name' => 'Totodile'],
+            ['id' => 172, 'name' => 'pichu', 'display_name' => 'Pichu'],
+            ['id' => 196, 'name' => 'espeon', 'display_name' => 'Espeon'],
+            ['id' => 197, 'name' => 'umbreon', 'display_name' => 'Umbreon'],
         ];
     }
 
@@ -543,5 +633,35 @@ class PokeApiService
         }
 
         return array_unique($allWeaknesses);
+    }
+
+    public function getGames(): array
+    {
+        // Lista de jogos Pokémon mais populares
+        return [
+            'Red/Blue' => 'Pokémon Red/Blue (Gen I)',
+            'Yellow' => 'Pokémon Yellow (Gen I)',
+            'Gold/Silver' => 'Pokémon Gold/Silver (Gen II)',
+            'Crystal' => 'Pokémon Crystal (Gen II)',
+            'Ruby/Sapphire' => 'Pokémon Ruby/Sapphire (Gen III)',
+            'Emerald' => 'Pokémon Emerald (Gen III)',
+            'FireRed/LeafGreen' => 'Pokémon FireRed/LeafGreen (Gen III)',
+            'Diamond/Pearl' => 'Pokémon Diamond/Pearl (Gen IV)',
+            'Platinum' => 'Pokémon Platinum (Gen IV)',
+            'HeartGold/SoulSilver' => 'Pokémon HeartGold/SoulSilver (Gen IV)',
+            'Black/White' => 'Pokémon Black/White (Gen V)',
+            'Black 2/White 2' => 'Pokémon Black 2/White 2 (Gen V)',
+            'X/Y' => 'Pokémon X/Y (Gen VI)',
+            'Omega Ruby/Alpha Sapphire' => 'Pokémon Omega Ruby/Alpha Sapphire (Gen VI)',
+            'Sun/Moon' => 'Pokémon Sun/Moon (Gen VII)',
+            'Ultra Sun/Ultra Moon' => 'Pokémon Ultra Sun/Ultra Moon (Gen VII)',
+            'Let\'s Go Pikachu/Eevee' => 'Pokémon Let\'s Go Pikachu/Eevee (Gen VII)',
+            'Sword/Shield' => 'Pokémon Sword/Shield (Gen VIII)',
+            'Brilliant Diamond/Shining Pearl' => 'Pokémon Brilliant Diamond/Shining Pearl (Gen VIII)',
+            'Legends: Arceus' => 'Pokémon Legends: Arceus (Gen VIII)',
+            'Scarlet/Violet' => 'Pokémon Scarlet/Violet (Gen IX)',
+            'Pokémon GO' => 'Pokémon GO',
+            'Other' => 'Outro/Personalizado'
+        ];
     }
 }

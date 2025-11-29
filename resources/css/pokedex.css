@@ -1,0 +1,178 @@
+/* Estilos específicos para a Pokédex Nacional */
+.pokedex-card-national {
+    background: linear-gradient(
+        135deg,
+        rgba(30, 41, 59, 0.95) 0%,
+        rgba(51, 65, 85, 0.8) 50%,
+        rgba(30, 41, 59, 0.95) 100%
+    );
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    border-radius: 1.2rem;
+    backdrop-filter: blur(12px);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.pokedex-card-national::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        45deg,
+        rgba(59, 130, 246, 0.1) 0%,
+        transparent 50%,
+        rgba(139, 92, 246, 0.1) 100%
+    );
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    z-index: 1;
+}
+
+.pokedex-card-national:hover::before {
+    opacity: 1;
+}
+
+.pokedex-card-national:hover {
+    transform: translateY(-8px) scale(1.02);
+    border-color: rgba(59, 130, 246, 0.6);
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.4),
+        0 0 30px rgba(59, 130, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.pokedex-card-national > * {
+    position: relative;
+    z-index: 2;
+}
+
+.pokemon-sprite {
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.4));
+}
+
+.group:hover .pokemon-sprite {
+    transform: scale(1.15) rotate(5deg);
+    filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.5));
+}
+
+/* Animação de carregamento melhorada */
+#loading-indicator {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+/* Animação de entrada dos cards */
+.pokedex-card-national {
+    animation: slideInUp 0.6s ease-out forwards;
+    opacity: 0;
+    transform: translateY(30px);
+}
+
+@keyframes slideInUp {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Delay escalonado para cards carregados dinamicamente */
+.pokedex-card-national:nth-child(odd) {
+    animation-delay: 0.1s;
+}
+
+.pokedex-card-national:nth-child(even) {
+    animation-delay: 0.2s;
+}
+
+/* Melhorias nos tipos e fraquezas */
+.pokedex-card-national .type-badge,
+.pokedex-card-national .weakness-badge {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.pokedex-card-national .type-badge::before,
+.pokedex-card-national .weakness-badge::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.2),
+        transparent
+    );
+    transition: left 0.5s;
+}
+
+.pokedex-card-national:hover .type-badge::before,
+.pokedex-card-national:hover .weakness-badge::before {
+    left: 100%;
+}
+
+/* Responsividade melhorada */
+@media (max-width: 768px) {
+    .pokedex-card-national {
+        margin: 0 auto;
+        max-width: 300px;
+    }
+
+    .pokedex-card-national:hover {
+        transform: translateY(-4px) scale(1.01);
+    }
+}
+
+/* Efeito de brilho sutil */
+.pokedex-card-national {
+    position: relative;
+}
+
+.pokedex-card-national::after {
+    content: "";
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    background: linear-gradient(
+        45deg,
+        rgba(59, 130, 246, 0.3),
+        rgba(139, 92, 246, 0.3),
+        rgba(59, 130, 246, 0.3)
+    );
+    border-radius: inherit;
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+
+.pokedex-card-national:hover::after {
+    opacity: 1;
+    animation: borderGlow 2s ease-in-out infinite;
+}
+
+@keyframes borderGlow {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
