@@ -105,10 +105,23 @@
                             <!-- Imagem do Pokémon -->
                             @if ($pokemonData['sprite'])
                             <div class="flex-shrink-0">
+                                <!-- Mega Evolução Tabs -->
+                                <div id="mega-tabs-create" class="mb-4 hidden">
+                                    <div class="flex flex-wrap justify-center gap-2">
+                                        <button
+                                            class="mega-tab-create active rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-3 py-2 text-sm font-semibold text-white shadow-lg transition-all duration-300 hover:scale-105"
+                                            data-form="normal">
+                                            Normal
+                                        </button>
+                                        <!-- Mega tabs serão inseridas dinamicamente aqui -->
+                                    </div>
+                                </div>
+
                                 <div class="relative">
                                     <div
                                         class="flex h-72 w-72 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-700/50 to-slate-800/50 shadow-inner">
-                                        <img src="{{ $pokemonData['sprite'] }}" alt="{{ $pokemonData['name'] }}"
+                                        <img id="pokemon-sprite-create" src="{{ $pokemonData['sprite'] }}"
+                                            alt="{{ $pokemonData['name'] }}"
                                             class="h-64 w-64 object-contain drop-shadow-2xl transition-transform duration-300 hover:scale-110">
                                     </div>
                                 </div>
@@ -243,6 +256,15 @@
                                                 <td><span class="text-cyan-400">{{ $pokemonData['growth_rate'] }}</span>
                                                 </td>
                                             </tr>
+                                            <tr>
+                                                <th>Movimentos</th>
+                                                <td>
+                                                    <button id="open-moves-modal-create"
+                                                        class="font-semibold text-blue-400 hover:text-blue-300 transition-colors duration-200 cursor-pointer">
+                                                        Ver Movimentos →
+                                                    </button>
+                                                </td>
+                                            </tr>
                                         </table>
                                     </div>
                                 </div>
@@ -266,12 +288,12 @@
                         @if (!empty($pokemonData['evolution_chain']) && count($pokemonData['evolution_chain']) > 1)
                         <div class="mt-8 rounded-xl bg-slate-700/30 p-6">
                             <h3 class="pokedex-title mb-6 text-xl text-purple-300">Cadeia de Evolução</h3>
-                            <div class="flex flex-wrap items-center justify-center gap-4">
+                            <div id="evolution-chain-create" class="flex flex-wrap items-center justify-center gap-4">
                                 @foreach ($pokemonData['evolution_chain'] as $index => $evo)
                                 <div class="flex items-center">
                                     <!-- Pokémon Card -->
-                                    <div
-                                        class="{{ $evo['is_current'] ? 'bg-blue-500/20 ring-2 ring-blue-500' : 'bg-slate-600/30 hover:bg-slate-600/50' }} flex flex-col items-center rounded-xl p-4 transition-all duration-300">
+                                    <div class="evolution-pokemon-create {{ $evo['is_current'] ? 'bg-blue-500/20 ring-2 ring-blue-500' : 'bg-slate-600/30 hover:bg-slate-600/50' }} flex flex-col items-center rounded-xl p-4 transition-all duration-300 cursor-pointer hover:scale-105"
+                                        data-pokemon-id="{{ $evo['id'] ?? 0 }}">
                                         @if ($evo['sprite'])
                                         <img src="{{ $evo['sprite'] }}" alt="{{ $evo['name'] }}"
                                             class="{{ $evo['is_current'] ? 'drop-shadow-lg' : 'opacity-80' }} h-24 w-24 object-contain">
@@ -307,6 +329,15 @@
                                 </div>
                                 @endforeach
                             </div>
+
+                            <!-- Formas Regionais na Evolução -->
+                            <div id="regional-forms-evolution-create" class="hidden mt-6">
+                                <h4 class="text-lg text-green-300 mb-4 font-semibold">🌍 Formas Regionais</h4>
+                                <div id="regional-forms-chain-create"
+                                    class="flex flex-wrap items-center justify-center gap-4">
+                                    <!-- Conteúdo será inserido dinamicamente -->
+                                </div>
+                            </div>
                         </div>
                         @endif
 
@@ -325,6 +356,52 @@
                             </div>
                         </div>
                         @endif
+
+                        <!-- Seções de Variedades e Movimentos (carregados via JavaScript) -->
+                        <div id="varieties-section" class="mt-6" style="display: none;">
+                            <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                                <!-- Mega Evoluções Dinâmicas -->
+                                <div id="mega-evolutions-section"
+                                    class="rounded-xl bg-gradient-to-r from-pink-500/20 to-purple-500/20 p-6"
+                                    style="display: none;">
+                                    <h3 class="pokedex-title mb-4 text-xl text-pink-300">
+                                        🌟 Mega Evoluções
+                                    </h3>
+                                    <div id="mega-evolutions-content"></div>
+                                </div>
+
+                                <!-- Formas Regionais -->
+                                <div id="regional-forms-section"
+                                    class="rounded-xl bg-gradient-to-r from-green-500/20 to-blue-500/20 p-6"
+                                    style="display: none;">
+                                    <h3 class="pokedex-title mb-4 text-xl text-green-300">
+                                        🌍 Formas Regionais
+                                    </h3>
+                                    <div id="regional-forms-content"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Movimentos Aprendidos -->
+                        <div id="moves-section"
+                            class="mt-6 rounded-xl bg-gradient-to-r from-yellow-500/20 to-orange-500/20 p-6"
+                            style="display: none;">
+                            <h3 class="pokedex-title mb-4 text-xl text-yellow-300">
+                                ⚔️ Movimentos Aprendidos por Level Up
+                            </h3>
+                            <div class="text-sm text-yellow-200 mb-4">
+                                Os movimentos mostrados abaixo são aprendidos conforme o Pokémon sobe de nível.
+                            </div>
+                            <div id="moves-loading" class="text-center py-4">
+                                <div class="inline-flex items-center gap-2 text-yellow-300">
+                                    <div
+                                        class="h-4 w-4 animate-spin rounded-full border-2 border-yellow-500 border-t-transparent">
+                                    </div>
+                                    Carregando movimentos...
+                                </div>
+                            </div>
+                            <div id="moves-content" class="max-h-96 overflow-y-auto"></div>
+                        </div>
                     </div>
 
                     <!-- Layout Principal: Gráfico + Formulário -->
@@ -760,6 +837,36 @@
         </div>
     </div>
 
+    <!-- Modal de Movimentos Otimizado -->
+    <div id="moves-modal-create" class="fixed inset-0 z-50 hidden items-center justify-center bg-black bg-opacity-75">
+        <div class="relative mx-4 w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-2xl bg-slate-800 shadow-2xl">
+            <!-- Header do Modal -->
+            <div class="flex items-center justify-between bg-gradient-to-r from-yellow-500 to-orange-500 p-6">
+                <h2 class="text-2xl font-bold text-white">⚔️ Movimentos Aprendidos por Level Up</h2>
+                <button id="close-moves-modal-create" class="text-white hover:text-gray-300 transition-colors">
+                    <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                        </path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Conteúdo do Modal com Scroll Otimizado -->
+            <div class="h-[calc(90vh-120px)] overflow-y-auto p-6">
+                <div id="modal-moves-loading-create" class="text-center py-8">
+                    <div class="inline-flex items-center gap-2 text-yellow-300">
+                        <div class="h-6 w-6 animate-spin rounded-full border-2 border-yellow-500 border-t-transparent">
+                        </div>
+                        Carregando movimentos...
+                    </div>
+                </div>
+                <div id="modal-moves-content-create" class="space-y-2">
+                    <!-- Movimentos serão carregados aqui de forma otimizada -->
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let searchTimeout;
         const searchInput = document.getElementById('pokemon_search');
@@ -858,6 +965,25 @@
             });
         }
 
+        // Cache global para otimização
+        let pokemonCache = {
+            varieties: {},
+            moves: {}
+        };
+
+        let currentPokemonCreateData = null;
+        let megaVarietiesCreate = [];
+        let regionalFormsCreate = [];
+        let pokemonMovesCreateCache = null;
+
+        @if(isset($pokemonData))
+        currentPokemonCreateData = {
+            id: {{ $pokemonData['id'] }},
+            name: '{{ $pokemonData['name'] }}',
+            sprite: '{{ $pokemonData['sprite'] }}'
+        };
+        @endif
+
         // Verificar se há pokemon_id na URL e carregar automaticamente
         document.addEventListener('DOMContentLoaded', function() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -869,6 +995,333 @@
                 searchInput.value = pokemonId;
                 searchForm.submit();
             }
+
+            // Carregar variedades e movimentos se há dados do Pokémon
+            @if(isset($pokemonData))
+                setupCreateEventListeners();
+                loadVarietiesAndMovesOptimized({{ $pokemonData['id'] }});
+            @endif
         });
+
+        function setupCreateEventListeners() {
+            // Modal de movimentos
+            const openModalBtn = document.getElementById('open-moves-modal-create');
+            const closeModalBtn = document.getElementById('close-moves-modal-create');
+            const modal = document.getElementById('moves-modal-create');
+
+            if (openModalBtn && modal) {
+                openModalBtn.addEventListener('click', function() {
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
+                    loadMovesInModalOptimized();
+                });
+            }
+
+            if (closeModalBtn && modal) {
+                closeModalBtn.addEventListener('click', function() {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                });
+
+                // Fechar modal clicando fora
+                modal.addEventListener('click', function(e) {
+                    if (e.target === modal) {
+                        modal.classList.add('hidden');
+                        modal.classList.remove('flex');
+                    }
+                });
+            }
+
+            // Navegação por evolução
+            setupEvolutionNavigationCreate();
+        }
+
+        // Função otimizada para carregar variedades e movimentos com cache
+        async function loadVarietiesAndMovesOptimized(pokemonId) {
+            try {
+                // Carregar variedades com cache
+                let varieties;
+                if (pokemonCache.varieties[pokemonId]) {
+                    varieties = pokemonCache.varieties[pokemonId];
+                } else {
+                    const varietiesResponse = await fetch(`{{ route('pokemon.varieties') }}?id=${pokemonId}`);
+                    varieties = await varietiesResponse.json();
+                    pokemonCache.varieties[pokemonId] = varieties;
+                }
+
+                megaVarietiesCreate = varieties.mega_evolutions || [];
+                regionalFormsCreate = varieties.regional_forms || [];
+
+                displayMegaTabsCreate(varieties);
+                displayRegionalFormsInEvolutionCreate(varieties);
+
+                // Pré-carregar movimentos em background (sem bloquear UI)
+                loadMovesInBackground(pokemonId);
+
+            } catch (error) {
+                console.error('Erro ao carregar dados adicionais:', error);
+            }
+        }
+
+        // Carregamento de movimentos em background para cache
+        async function loadMovesInBackground(pokemonId) {
+            if (pokemonCache.moves[pokemonId]) {
+                pokemonMovesCreateCache = pokemonCache.moves[pokemonId];
+                return;
+            }
+
+            try {
+                const movesResponse = await fetch(`{{ route('pokemon.moves') }}?id=${pokemonId}`);
+                const moves = await movesResponse.json();
+                pokemonCache.moves[pokemonId] = moves;
+                pokemonMovesCreateCache = moves;
+            } catch (error) {
+                console.error('Erro ao carregar movimentos:', error);
+            }
+        }
+
+        // Função para exibir abas de mega evolução na página de criação
+        function displayMegaTabsCreate(varieties) {
+            const megaTabsContainer = document.getElementById('mega-tabs-create');
+            const tabsContainer = megaTabsContainer.querySelector('div');
+
+            if (varieties.has_mega_evolutions && varieties.mega_evolutions.length > 0) {
+                // Adicionar tabs das mega evoluções
+                varieties.mega_evolutions.forEach(mega => {
+                    const button = document.createElement('button');
+                    button.className = 'mega-tab-create rounded-lg bg-gradient-to-r from-pink-500 to-purple-500 px-3 py-2 text-sm font-semibold text-white shadow-lg transition-all duration-300 hover:scale-105';
+                    button.setAttribute('data-form', mega.form);
+                    button.textContent = mega.name.replace(currentPokemonCreateData.name, '').trim();
+
+                    button.addEventListener('click', () => switchMegaFormCreate(mega.form));
+                    tabsContainer.appendChild(button);
+                });
+
+                megaTabsContainer.classList.remove('hidden');
+            }
+        }
+
+        // Função para alternar forma mega na página de criação
+        async function switchMegaFormCreate(form) {
+            const sprite = document.getElementById('pokemon-sprite-create');
+            const tabs = document.querySelectorAll('.mega-tab-create');
+
+            // Atualizar classe ativa das abas
+            tabs.forEach(tab => {
+                tab.classList.remove('active', 'from-blue-500', 'to-cyan-500');
+                tab.classList.add('from-pink-500', 'to-purple-500');
+
+                if (tab.dataset.form === form) {
+                    tab.classList.add('active', 'from-blue-500', 'to-cyan-500');
+                    tab.classList.remove('from-pink-500', 'to-purple-500');
+                }
+            });
+
+            // Atualizar sprite
+            if (form === 'normal') {
+                sprite.src = currentPokemonCreateData.sprite;
+            } else {
+                const megaPokemonId = await getMegaPokemonIdCreate(form);
+                if (megaPokemonId) {
+                    sprite.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${megaPokemonId}.png`;
+                }
+            }
+        }
+
+        // Função auxiliar para obter ID da mega evolução
+        async function getMegaPokemonIdCreate(form) {
+            const megaIds = {
+                'venusaur-mega': 10033, 'charizard-mega-x': 10034, 'charizard-mega-y': 10035,
+                'blastoise-mega': 10036, 'beedrill-mega': 10090, 'pidgeot-mega': 10073,
+                'alakazam-mega': 10037, 'slowbro-mega': 10071, 'gengar-mega': 10038,
+                'kangaskhan-mega': 10039, 'pinsir-mega': 10040, 'gyarados-mega': 10041,
+                'aerodactyl-mega': 10042, 'mewtwo-mega-x': 10043, 'mewtwo-mega-y': 10044,
+                'ampharos-mega': 10045, 'steelix-mega': 10072, 'scizor-mega': 10046,
+                'heracross-mega': 10047, 'houndoom-mega': 10048, 'tyranitar-mega': 10049,
+                'sceptile-mega': 10065, 'blaziken-mega': 10050, 'swampert-mega': 10064,
+                'gardevoir-mega': 10051, 'sableye-mega': 10066, 'mawile-mega': 10052,
+                'aggron-mega': 10053, 'medicham-mega': 10054, 'manectric-mega': 10055,
+                'sharpedo-mega': 10070, 'camerupt-mega': 10087, 'altaria-mega': 10067,
+                'banette-mega': 10056, 'absol-mega': 10057, 'glalie-mega': 10068,
+                'salamence-mega': 10089, 'metagross-mega': 10076, 'latias-mega': 10062,
+                'latios-mega': 10063, 'kyogre-primal': 10077, 'groudon-primal': 10078,
+                'rayquaza-mega': 10079, 'lopunny-mega': 10088, 'garchomp-mega': 10058,
+                'lucario-mega': 10059, 'abomasnow-mega': 10060, 'gallade-mega': 10074,
+                'audino-mega': 10069, 'diancie-mega': 10075
+            };
+            return megaIds[form] || null;
+        }
+
+        // Função para exibir formas regionais na cadeia de evolução
+        function displayRegionalFormsInEvolutionCreate(varieties) {
+            const regionalSection = document.getElementById('regional-forms-evolution-create');
+            const regionalChain = document.getElementById('regional-forms-chain-create');
+
+            if (varieties.has_regional_forms && varieties.regional_forms.length > 0) {
+                let regionalHtml = '';
+                varieties.regional_forms.forEach(form => {
+                    const pokemonId = extractIdFromUrlCreate(form.url);
+                    const sprite = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${pokemonId}.png`;
+
+                    regionalHtml += `
+                        <div class="evolution-pokemon-create flex flex-col items-center rounded-xl p-4 bg-green-500/20 hover:bg-green-500/30 transition-all duration-300 cursor-pointer hover:scale-105 ring-2 ring-green-500"
+                             data-pokemon-id="${pokemonId}">
+                            <img src="${sprite}" alt="${form.name}" class="h-24 w-24 object-contain drop-shadow-lg">
+                            <span class="mt-2 text-sm font-semibold text-green-300">${form.name}</span>
+                            <span class="text-xs text-green-400">Forma ${form.region}</span>
+                            <span class="text-xs text-slate-500">#${String(pokemonId).padStart(3, '0')}</span>
+                        </div>
+                    `;
+                });
+
+                regionalChain.innerHTML = regionalHtml;
+                regionalSection.classList.remove('hidden');
+
+                // Adicionar eventos de clique para formas regionais
+                setupEvolutionNavigationCreate();
+            }
+        }
+
+        // Função para configurar navegação por evolução na página de criação
+        function setupEvolutionNavigationCreate() {
+            const evolutionCards = document.querySelectorAll('.evolution-pokemon-create');
+
+            evolutionCards.forEach(card => {
+                card.addEventListener('click', function() {
+                    const pokemonId = this.dataset.pokemonId;
+                    if (pokemonId && pokemonId !== '0') {
+                        // Redirecionar para a página de criação com o ID do Pokémon
+                        window.location.href = `{{ route('pokemon.search-by-id') }}?pokemon_id=${pokemonId}`;
+                    }
+                });
+            });
+        }
+
+        // Função auxiliar para extrair ID da URL
+        function extractIdFromUrlCreate(url) {
+            const matches = url.match(/\/(\d+)\/?$/);
+            return matches ? matches[1] : null;
+        }
+
+        // Função otimizada para carregar movimentos no modal
+        function loadMovesInModalOptimized() {
+            const loadingDiv = document.getElementById('modal-moves-loading-create');
+            const contentDiv = document.getElementById('modal-moves-content-create');
+
+            // Se já temos os movimentos em cache, exibir imediatamente
+            if (pokemonMovesCreateCache && pokemonMovesCreateCache.length > 0) {
+                loadingDiv.style.display = 'none';
+                contentDiv.innerHTML = generateMovesTableOptimized(pokemonMovesCreateCache);
+                return;
+            }
+
+            // Mostrar loading
+            loadingDiv.style.display = 'block';
+            contentDiv.innerHTML = '';
+
+            // Tentar carregar do cache global
+            if (currentPokemonCreateData && pokemonCache.moves[currentPokemonCreateData.id]) {
+                pokemonMovesCreateCache = pokemonCache.moves[currentPokemonCreateData.id];
+                loadingDiv.style.display = 'none';
+                contentDiv.innerHTML = generateMovesTableOptimized(pokemonMovesCreateCache);
+                return;
+            }
+
+            // Carregar via API se não estiver em cache
+            if (currentPokemonCreateData) {
+                fetch(`{{ route('pokemon.moves') }}?id=${currentPokemonCreateData.id}`)
+                    .then(response => response.json())
+                    .then(moves => {
+                        pokemonCache.moves[currentPokemonCreateData.id] = moves;
+                        pokemonMovesCreateCache = moves;
+                        loadingDiv.style.display = 'none';
+                        contentDiv.innerHTML = generateMovesTableOptimized(moves);
+                    })
+                    .catch(error => {
+                        loadingDiv.style.display = 'none';
+                        contentDiv.innerHTML = '<div class="text-center text-red-400 py-8">Erro ao carregar movimentos.</div>';
+                    });
+            }
+        }
+
+        // Função otimizada para gerar tabela de movimentos com melhor performance
+        function generateMovesTableOptimized(moves) {
+            if (!moves || moves.length === 0) {
+                return '<div class="text-center text-slate-400 py-8 text-lg">Nenhum movimento encontrado para este Pokémon.</div>';
+            }
+
+            const typeColors = {
+                'normal': '#A8A878', 'fire': '#F08030', 'water': '#6890F0', 'electric': '#F8D030',
+                'grass': '#78C850', 'ice': '#98D8D8', 'fighting': '#C03028', 'poison': '#A040A0',
+                'ground': '#E0C068', 'flying': '#A890F0', 'psychic': '#F85888', 'bug': '#A8B820',
+                'rock': '#B8A038', 'ghost': '#705898', 'dragon': '#7038F8', 'dark': '#705848',
+                'steel': '#B8B8D0', 'fairy': '#EE99AC'
+            };
+
+            const categoryIcons = {
+                'physical': '⚔️',
+                'special': '✨',
+                'status': '🛡️'
+            };
+
+            // Usar template string mais eficiente
+            const tableHeader = `
+                <div class="bg-slate-700/50 rounded-xl overflow-hidden">
+                    <div class="bg-gradient-to-r from-yellow-500 to-orange-500 p-4">
+                        <div class="grid grid-cols-6 gap-4 text-white font-bold text-sm">
+                            <div>Nv.</div>
+                            <div class="col-span-2">Movimento</div>
+                            <div class="text-center">Tipo</div>
+                            <div class="text-center">Poder</div>
+                            <div class="text-center">Prec.</div>
+                        </div>
+                    </div>
+                    <div class="space-y-1 p-2">
+            `;
+
+            const movesRows = moves.map((move, index) => {
+                const typeColor = typeColors[move.type] || '#777';
+                const categoryIcon = categoryIcons[move.category] || '❓';
+                const isEven = index % 2 === 0;
+
+                return `
+                    <div class="${isEven ? 'bg-slate-800/50' : 'bg-slate-700/50'} hover:bg-slate-600/50 transition-colors rounded-lg p-3">
+                        <div class="grid grid-cols-6 gap-4 items-center text-sm">
+                            <div class="text-center">
+                                <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-yellow-500/20 text-yellow-300 font-bold text-xs">
+                                    ${move.level_learned}
+                                </span>
+                            </div>
+                            <div class="col-span-2">
+                                <div class="font-semibold text-white">${move.name}</div>
+                                <div class="text-xs text-slate-400 mt-1">${categoryIcon} ${move.category}</div>
+                            </div>
+                            <div class="text-center">
+                                <span class="inline-block px-2 py-1 rounded-full text-xs font-bold text-white"
+                                      style="background-color: ${typeColor}">
+                                    ${move.type.toUpperCase()}
+                                </span>
+                            </div>
+                            <div class="text-center font-bold text-white">
+                                ${move.power || '—'}
+                            </div>
+                            <div class="text-center font-bold text-white">
+                                ${move.accuracy ? move.accuracy + '%' : '—'}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            const tableFooter = `
+                    </div>
+                </div>
+                <div class="mt-4 text-center text-sm text-slate-400">
+                    Total de ${moves.length} movimentos encontrados
+                </div>
+            `;
+
+            return tableHeader + movesRows + tableFooter;
+        }
     </script>
 </x-app-layout>

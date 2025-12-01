@@ -35,14 +35,6 @@ Route::middleware('auth')->group(function () {
     // Rotas da Pokédx
     Route::get('/pokedex', [PokemonController::class, 'pokedex'])->name('pokedex.index');
     Route::get('/pokedex/load-more', [PokemonController::class, 'loadMorePokedex'])->name('pokedex.load-more');
-    Route::get('/pokedex/search', [PokemonController::class, 'searchPokedex'])->name('pokedex.search');
-
-    // Rotas para variedades e movimentos
-    Route::get('/pokemon/varieties', [PokemonController::class, 'getVarieties'])->name('pokemon.varieties');
-    Route::get('/pokemon/moves', [PokemonController::class, 'getLearnedMoves'])->name('pokemon.moves');
-
-    // Rota para buscar Pokémon por ID e redirecionar para criar
-    Route::get('/pokemon/search-by-id', [PokemonController::class, 'searchById'])->name('pokemon.search-by-id');
 });
 
 require __DIR__ . '/auth.php';

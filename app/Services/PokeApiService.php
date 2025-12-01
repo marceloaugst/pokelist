@@ -341,6 +341,221 @@ class PokeApiService
         }
     }
 
+    /**
+     * Busca variedades do Pokémon através da API pokemon-species
+     * Inclui mega evoluções e formas regionais
+     */
+    public function getVarieties($pokemonIdOrName): array
+    {
+        try {
+            $endpoint = is_numeric($pokemonIdOrName) ? $pokemonIdOrName : strtolower(trim($pokemonIdOrName));
+            $url = self::BASE_URL . "/pokemon-species/{$endpoint}";
+
+            $response = Http::withOptions(['verify' => false])
+                ->timeout(10)
+                ->retry(2, 100)
+                ->get($url);
+
+            if (!$response->successful()) {
+                return [
+                    'has_mega_evolutions' => false,
+                    'mega_evolutions' => [],
+                    'has_regional_forms' => false,
+                    'regional_forms' => []
+                ];
+            }
+
+            $data = $response->json();
+            $varieties = $data['varieties'] ?? [];
+
+            $megaEvolutions = [];
+            $regionalForms = [];
+
+            foreach ($varieties as $variety) {
+                $varietyName = $variety['pokemon']['name'] ?? '';
+
+                // Verificar se é mega evolução
+                if (str_contains(strtolower($varietyName), 'mega')) {
+                    $megaEvolutions[] = [
+                        'name' => ucwords(str_replace('-', ' ', $varietyName)),
+                        'form' => $varietyName,
+                        'url' => $variety['pokemon']['url'] ?? ''
+                    ];
+                }
+
+                // Verificar se é forma regional
+                $regionalKeywords = ['alola', 'alolan', 'galar', 'galarian', 'hisui', 'hisuian', 'paldea', 'paldean'];
+                foreach ($regionalKeywords as $keyword) {
+                    if (str_contains(strtolower($varietyName), $keyword)) {
+                        $region = ucfirst(str_replace(['ian', 'n'], '', $keyword));
+                        $regionalForms[] = [
+                            'name' => ucwords(str_replace('-', ' ', $varietyName)),
+                            'form' => $varietyName,
+                            'region' => $region,
+                            'url' => $variety['pokemon']['url'] ?? ''
+                        ];
+                        break;
+                    }
+                }
+            }
+
+            return [
+                'has_mega_evolutions' => !empty($megaEvolutions),
+                'mega_evolutions' => $megaEvolutions,
+                'has_regional_forms' => !empty($regionalForms),
+                'regional_forms' => $regionalForms
+            ];
+        } catch (\Exception $e) {
+            Log::error('Erro ao buscar variedades do Pokémon', [
+                'pokemon' => $pokemonIdOrName,
+                'error' => $e->getMessage()
+            ]);
+
+            return [
+                'has_mega_evolutions' => false,
+                'mega_evolutions' => [],
+                'has_regional_forms' => false,
+                'regional_forms' => []
+            ];
+        }
+    }
+
+    /**
+     * Busca movimentos aprendidos pelo Pokémon de forma otimizada
+     */
+    public function getLearnedMoves($pokemonIdOrName): array
+    {
+        try {
+            $endpoint = is_numeric($pokemonIdOrName) ? $pokemonIdOrName : strtolower(trim($pokemonIdOrName));
+            $url = self::BASE_URL . "/pokemon/{$endpoint}";
+
+            $response = Http::withOptions(['verify' => false])
+                ->timeout(15) // Aumentar timeout para requisições de movimentos
+                ->retry(3, 200) // Mais tentativas com delay maior
+                ->get($url);
+
+            if (!$response->successful()) {
+                return [];
+            }
+
+            $data = $response->json();
+            $moves = $data['moves'] ?? [];
+
+            $learnedMoves = [];
+            $processedMoves = []; // Cache local para evitar duplicatas
+
+            // Processar movimentos de forma mais eficiente
+            foreach ($moves as $moveData) {
+                $moveName = $moveData['move']['name'] ?? '';
+                $moveUrl = $moveData['move']['url'] ?? '';
+
+                // Pular se já processamos este movimento
+                if (isset($processedMoves[$moveName])) {
+                    continue;
+                }
+
+                // Buscar detalhes do movimento com cache
+                $moveDetails = $this->getMoveDetailsOptimized($moveUrl, $moveName);
+
+                // Processar apenas movimentos level-up
+                foreach ($moveData['version_group_details'] ?? [] as $versionDetail) {
+                    $learnMethod = $versionDetail['move_learn_method']['name'] ?? '';
+                    $levelLearned = $versionDetail['level_learned_at'] ?? null;
+
+                    // Focar apenas em movimentos aprendidos por level up
+                    if ($learnMethod === 'level-up' && $levelLearned > 0) {
+                        $moveEntry = array_merge($moveDetails, [
+                            'level_learned' => $levelLearned,
+                            'learn_method' => 'Level Up'
+                        ]);
+
+                        $learnedMoves[] = $moveEntry;
+                        $processedMoves[$moveName] = true;
+                        break; // Pegar apenas a primeira versão level-up
+                    }
+                }
+            }
+
+            // Ordenar por nível aprendido
+            usort($learnedMoves, function ($a, $b) {
+                return ($a['level_learned'] ?? 0) <=> ($b['level_learned'] ?? 0);
+            });
+
+            // Limitar a 50 movimentos para performance
+            return array_slice($learnedMoves, 0, 50);
+        } catch (\Exception $e) {
+            Log::error('Erro ao buscar movimentos do Pokémon', [
+                'pokemon' => $pokemonIdOrName,
+                'error' => $e->getMessage()
+            ]);
+
+            return [];
+        }
+    }
+
+    /**
+     * Busca detalhes de um movimento específico de forma otimizada
+     */
+    private function getMoveDetailsOptimized(string $moveUrl, string $moveName): array
+    {
+        // Cache básico em memória para sessão
+        static $moveCache = [];
+
+        if (isset($moveCache[$moveName])) {
+            return $moveCache[$moveName];
+        }
+
+        try {
+            $response = Http::withOptions(['verify' => false])
+                ->timeout(8) // Timeout menor para movimentos
+                ->get($moveUrl);
+
+            if (!$response->successful()) {
+                $defaultMove = [
+                    'name' => ucwords(str_replace('-', ' ', $moveName)),
+                    'type' => 'normal',
+                    'category' => 'status',
+                    'power' => null,
+                    'accuracy' => null
+                ];
+                $moveCache[$moveName] = $defaultMove;
+                return $defaultMove;
+            }
+
+            $data = $response->json();
+
+            $moveDetails = [
+                'name' => ucwords(str_replace('-', ' ', $data['name'] ?? $moveName)),
+                'type' => $data['type']['name'] ?? 'normal',
+                'category' => $data['damage_class']['name'] ?? 'status',
+                'power' => $data['power'],
+                'accuracy' => $data['accuracy']
+            ];
+
+            $moveCache[$moveName] = $moveDetails;
+            return $moveDetails;
+        } catch (\Exception $e) {
+            $defaultMove = [
+                'name' => ucwords(str_replace('-', ' ', $moveName)),
+                'type' => 'normal',
+                'category' => 'status',
+                'power' => null,
+                'accuracy' => null
+            ];
+            $moveCache[$moveName] = $defaultMove;
+            return $defaultMove;
+        }
+    }
+
+    /**
+     * Busca detalhes de um movimento específico (mantido para compatibilidade)
+     */
+    private function getMoveDetails(string $moveUrl): array
+    {
+        $moveName = basename(parse_url($moveUrl, PHP_URL_PATH));
+        return $this->getMoveDetailsOptimized($moveUrl, $moveName);
+    }
+
     private function getMegaEvolutions(string $pokemonName): array
     {
         // Lista de Pokémon com Mega Evoluções
@@ -348,7 +563,10 @@ class PokeApiService
             'venusaur' => ['venusaur-mega'],
             'charizard' => ['charizard-mega-x', 'charizard-mega-y'],
             'blastoise' => ['blastoise-mega'],
+            'beedrill' => ['beedrill-mega'],
+            'pidgeot' => ['pidgeot-mega'],
             'alakazam' => ['alakazam-mega'],
+            'slowbro' => ['slowbro-mega'],
             'gengar' => ['gengar-mega'],
             'kangaskhan' => ['kangaskhan-mega'],
             'pinsir' => ['pinsir-mega'],
@@ -356,38 +574,37 @@ class PokeApiService
             'aerodactyl' => ['aerodactyl-mega'],
             'mewtwo' => ['mewtwo-mega-x', 'mewtwo-mega-y'],
             'ampharos' => ['ampharos-mega'],
+            'steelix' => ['steelix-mega'],
             'scizor' => ['scizor-mega'],
             'heracross' => ['heracross-mega'],
             'houndoom' => ['houndoom-mega'],
             'tyranitar' => ['tyranitar-mega'],
+            'sceptile' => ['sceptile-mega'],
             'blaziken' => ['blaziken-mega'],
+            'swampert' => ['swampert-mega'],
             'gardevoir' => ['gardevoir-mega'],
+            'sableye' => ['sableye-mega'],
             'mawile' => ['mawile-mega'],
             'aggron' => ['aggron-mega'],
             'medicham' => ['medicham-mega'],
             'manectric' => ['manectric-mega'],
-            'banette' => ['banette-mega'],
-            'absol' => ['absol-mega'],
-            'garchomp' => ['garchomp-mega'],
-            'lucario' => ['lucario-mega'],
-            'abomasnow' => ['abomasnow-mega'],
-            'beedrill' => ['beedrill-mega'],
-            'pidgeot' => ['pidgeot-mega'],
-            'slowbro' => ['slowbro-mega'],
-            'steelix' => ['steelix-mega'],
-            'sceptile' => ['sceptile-mega'],
-            'swampert' => ['swampert-mega'],
-            'sableye' => ['sableye-mega'],
             'sharpedo' => ['sharpedo-mega'],
             'camerupt' => ['camerupt-mega'],
             'altaria' => ['altaria-mega'],
+            'banette' => ['banette-mega'],
+            'absol' => ['absol-mega'],
             'glalie' => ['glalie-mega'],
             'salamence' => ['salamence-mega'],
             'metagross' => ['metagross-mega'],
             'latias' => ['latias-mega'],
             'latios' => ['latios-mega'],
+            'kyogre' => ['kyogre-primal'],
+            'groudon' => ['groudon-primal'],
             'rayquaza' => ['rayquaza-mega'],
             'lopunny' => ['lopunny-mega'],
+            'garchomp' => ['garchomp-mega'],
+            'lucario' => ['lucario-mega'],
+            'abomasnow' => ['abomasnow-mega'],
             'gallade' => ['gallade-mega'],
             'audino' => ['audino-mega'],
             'diancie' => ['diancie-mega'],
@@ -403,8 +620,8 @@ class PokeApiService
         foreach ($megaPokemon[$name] as $megaForm) {
             // Extrair o nome bonito da mega
             $displayName = ucwords(str_replace('-', ' ', $megaForm));
-            $displayName = str_replace('Mega X', 'Mega X', $displayName);
-            $displayName = str_replace('Mega Y', 'Mega Y', $displayName);
+            $displayName = str_replace(['Mega X', 'Mega Y'], ['Mega X', 'Mega Y'], $displayName);
+            $displayName = str_replace('Primal', 'Forma Primitiva', $displayName);
 
             $megas[] = [
                 'name' => $displayName,

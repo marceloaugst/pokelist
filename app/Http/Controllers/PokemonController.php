@@ -57,6 +57,90 @@ class PokemonController extends Controller
         return response()->json($pokemonData);
     }
 
+    public function getVarieties(Request $request)
+    {
+        $pokemonId = $request->get('id');
+
+        if (!$pokemonId) {
+            return response()->json(['error' => 'ID do Pokémon é obrigatório'], 400);
+        }
+
+        // Cache de 1 hora para variedades
+        $cacheKey = "pokemon_varieties_{$pokemonId}";
+
+        $varieties = \Cache::remember($cacheKey, 3600, function () use ($pokemonId) {
+            return $this->pokeApi->getVarieties($pokemonId);
+        });
+
+        return response()->json($varieties);
+    }
+
+    public function getLearnedMoves(Request $request)
+    {
+        $pokemonId = $request->get('id');
+
+        if (!$pokemonId) {
+            return response()->json(['error' => 'ID do Pokémon é obrigatório'], 400);
+        }
+
+        // Cache de 30 minutos para movimentos
+        $cacheKey = "pokemon_moves_{$pokemonId}";
+
+        $moves = \Cache::remember($cacheKey, 1800, function () use ($pokemonId) {
+            return $this->pokeApi->getLearnedMoves($pokemonId);
+        });
+
+        return response()->json($moves);
+    }
+
+    public function searchPokedex(Request $request)
+    {
+        $query = $request->get('query', '');
+
+        if (strlen($query) < 2) {
+            return response()->json([]);
+        }
+
+        $results = [];
+
+        // Busca por ID se for numérico
+        if (is_numeric($query)) {
+            $pokemonId = (int) $query;
+            if ($pokemonId > 0 && $pokemonId <= 1010) {
+                $pokemonData = $this->pokeApi->getPokemon($pokemonId);
+                if ($pokemonData) {
+                    $results[] = [
+                        'id' => $pokemonData['id'],
+                        'name' => $pokemonData['name'],
+                        'sprite' => $pokemonData['sprite'],
+                        'types' => $pokemonData['types'],
+                        'type_colors' => $pokemonData['type_colors'],
+                        'weaknesses' => $pokemonData['weaknesses']
+                    ];
+                }
+            }
+        } else {
+            // Busca por nome - implementar busca mais inteligente
+            $suggestions = $this->pokeApi->searchPokemonByName($query);
+
+            foreach ($suggestions->take(10) as $suggestion) {
+                $pokemonData = $this->pokeApi->getPokemon($suggestion['id']);
+                if ($pokemonData) {
+                    $results[] = [
+                        'id' => $pokemonData['id'],
+                        'name' => $pokemonData['name'],
+                        'sprite' => $pokemonData['sprite'],
+                        'types' => $pokemonData['types'],
+                        'type_colors' => $pokemonData['type_colors'],
+                        'weaknesses' => $pokemonData['weaknesses']
+                    ];
+                }
+            }
+        }
+
+        return response()->json($results);
+    }
+
     public function search(Request $request)
     {
         $request->validate([
@@ -186,7 +270,7 @@ class PokemonController extends Controller
     public function loadMorePokedex(Request $request)
     {
         $offset = $request->get('offset', 0);
-        $limit = $request->get('limit', 20); // Reduzir para 20 por vez
+        $limit = $request->get('limit', 10); // Reduzir para 20 por vez
 
         $pokemons = $this->loadPokemonsFromApi($limit, $offset);
 
@@ -298,5 +382,19 @@ class PokemonController extends Controller
         $teamEntry->delete();
 
         return back()->with('success', $pokemon->pokemon_name . ' foi removido do seu time!');
+    }
+
+    /**
+     * Busca Pokémon por ID e redireciona para página de criação
+     */
+    public function searchById(Request $request)
+    {
+        $pokemonId = $request->get('pokemon_id');
+
+        if (!$pokemonId || !is_numeric($pokemonId)) {
+            return redirect()->route('pokemons.index')->with('error', 'ID do Pokémon inválido.');
+        }
+
+        return redirect()->route('pokemons.create', ['pokemon_id' => $pokemonId]);
     }
 }

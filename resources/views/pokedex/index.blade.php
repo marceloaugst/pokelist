@@ -26,90 +26,36 @@
 
   <div class="py-12">
     <div class="mx-auto max-w-7xl sm:px-6 lg:px-8">
+      <!-- Barra de Pesquisa -->
+      <div
+        class="mb-6 overflow-hidden border border-slate-700 bg-slate-800/50 shadow-xl backdrop-blur-sm sm:rounded-2xl">
+        <div class="p-6">
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+              </svg>
+            </div>
+            <input type="text" id="pokemon-search" placeholder="Pesquise por nome ou número do Pokémon..."
+              class="block w-full pl-10 pr-3 py-3 border border-slate-600 rounded-lg bg-slate-700/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" />
+            <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
+              <button id="clear-search" class="text-slate-400 hover:text-white transition-colors duration-200"
+                style="display: none;">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div id="search-status" class="mt-2 text-sm text-slate-400" style="display: none;"></div>
+        </div>
+      </div>
+
       <div class="overflow-hidden border border-slate-700 bg-slate-800/50 shadow-xl backdrop-blur-sm sm:rounded-2xl">
         <div class="p-6 text-slate-200">
           <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" id="pokemon-grid">
-            @foreach ($pokemons as $pokemon)
-            <a href="{{ route('pokemons.create') }}?pokemon_id={{ $pokemon['id'] }}"
-              class="pokedex-card-national group relative p-6 cursor-pointer block"
-              data-pokemon-id="{{ $pokemon['id'] }}">
-              <!-- Cabeçalho do Card -->
-              <div class="mb-4 text-center">
-                <span
-                  class="mb-3 inline-block rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 px-3 py-1 text-xs font-bold text-white shadow-lg shadow-blue-500/30">
-                  #{{ str_pad($pokemon['id'], 3, '0', STR_PAD_LEFT) }}
-                </span>
-                <h3 class="text-xl font-bold text-white">
-                  {{ $pokemon['name'] }}
-                </h3>
-              </div>
-
-              <!-- Imagem do Pokémon -->
-              <div class="relative mb-4">
-                @if ($pokemon['sprite'])
-                <div
-                  class="relative mx-auto flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-slate-700 to-slate-800 shadow-lg shadow-slate-900/50 ring-2 ring-slate-600">
-                  <div class="absolute inset-2 rounded-full bg-gradient-to-br from-slate-600 to-slate-700">
-                  </div>
-                  <img src="{{ $pokemon['sprite'] }}" alt="{{ $pokemon['name'] }}"
-                    class="pokemon-sprite relative z-10 h-20 w-20 object-contain">
-                </div>
-                @else
-                <div class="mx-auto flex h-28 w-28 items-center justify-center rounded-full bg-slate-700">
-                  <span class="text-3xl text-slate-500">?</span>
-                </div>
-                @endif
-              </div>
-
-              <!-- Tipos -->
-              <div class="mb-4 flex flex-wrap justify-center gap-2">
-                @foreach ($pokemon['types'] as $type)
-                <span class="type-badge rounded-full px-3 py-1 text-xs font-semibold text-white shadow-lg"
-                  style="background-color: {{ $pokemon['type_colors'][$type] ?? '#777' }}">
-                  {{ ucfirst($type) }}
-                </span>
-                @endforeach
-              </div>
-
-              <!-- Fraquezas -->
-              <div>
-                <div class="mb-2 text-center text-sm font-semibold text-slate-300">Fraquezas</div>
-                <div class="flex flex-wrap justify-center gap-1">
-                  @forelse ($pokemon['weaknesses'] as $weakness)
-                  @php
-                  $weaknessColors = [
-                  'normal' => '#A8A878',
-                  'fire' => '#F08030',
-                  'water' => '#6890F0',
-                  'electric' => '#F8D030',
-                  'grass' => '#78C850',
-                  'ice' => '#98D8D8',
-                  'fighting' => '#C03028',
-                  'poison' => '#A040A0',
-                  'ground' => '#E0C068',
-                  'flying' => '#A890F0',
-                  'psychic' => '#F85888',
-                  'bug' => '#A8B820',
-                  'rock' => '#B8A038',
-                  'ghost' => '#705898',
-                  'dragon' => '#7038F8',
-                  'dark' => '#705848',
-                  'steel' => '#B8B8D0',
-                  'fairy' => '#EE99AC',
-                  ];
-                  $weaknessColor = $weaknessColors[$weakness] ?? '#777';
-                  @endphp
-                  <span class="weakness-badge rounded px-2 py-1 text-xs font-medium text-white shadow-sm"
-                    style="background-color: {{ $weaknessColor }}">
-                    {{ ucfirst($weakness) }}
-                  </span>
-                  @empty
-                  <span class="text-xs text-slate-400">Nenhuma fraqueza específica</span>
-                  @endforelse
-                </div>
-              </div>
-            </a>
-            @endforeach
+            <!-- Pokémons serão carregados via JavaScript -->
           </div>
 
           <!-- Loading indicator -->
@@ -266,6 +212,9 @@
     let loading = false;
         let currentOffset = {{ count($pokemons) }};
         let hasMoreData = true;
+        let searchTimeout;
+        let isSearching = false;
+        let originalPokemons = @json($pokemons);
 
         // Função para obter cor do tipo
         const typeColors = {
@@ -293,9 +242,105 @@
             return typeColors[type] || '#777';
         }
 
-        // Função para carregar mais Pokémon
+        // Função para pesquisar Pokémon
+        async function searchPokemons(query) {
+            if (!query.trim()) {
+                clearSearch();
+                return;
+            }
+
+            isSearching = true;
+            document.getElementById('search-status').style.display = 'block';
+            document.getElementById('search-status').textContent = 'Pesquisando...';
+
+            try {
+                const response = await fetch(`{{ route('pokedex.search') }}?query=${encodeURIComponent(query)}`);
+                const results = await response.json();
+
+                const grid = document.getElementById('pokemon-grid');
+                grid.innerHTML = '';
+
+                if (results.length === 0) {
+                    grid.innerHTML = `
+                        <div class="col-span-full text-center py-12">
+                            <div class="text-slate-400">
+                                <svg class="mx-auto h-16 w-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                </svg>
+                                <h3 class="text-xl font-semibold mb-2">Nenhum Pokémon encontrado</h3>
+                                <p>Tente pesquisar por outro nome ou número.</p>
+                            </div>
+                        </div>
+                    `;
+                    document.getElementById('search-status').textContent = 'Nenhum resultado encontrado';
+                } else {
+                    results.forEach((pokemon, index) => {
+                        const card = createPokemonCard(pokemon);
+                        setTimeout(() => {
+                            grid.appendChild(card);
+                            card.offsetHeight;
+                            card.style.opacity = '1';
+                            card.style.transform = 'translateY(0)';
+                        }, index * 50);
+                    });
+                    document.getElementById('search-status').textContent = `${results.length} Pokémon encontrado${results.length > 1 ? 's' : ''}`;
+                }
+
+            } catch (error) {
+                console.error('Erro na pesquisa:', error);
+                document.getElementById('search-status').textContent = 'Erro na pesquisa. Tente novamente.';
+            }
+        }
+
+        // Função para limpar pesquisa
+        function clearSearch() {
+            isSearching = false;
+            document.getElementById('pokemon-search').value = '';
+            document.getElementById('clear-search').style.display = 'none';
+            document.getElementById('search-status').style.display = 'none';
+
+            const grid = document.getElementById('pokemon-grid');
+            grid.innerHTML = '';
+
+            // Recarregar Pokémons originais
+            originalPokemons.forEach((pokemon, index) => {
+                const card = createPokemonCard(pokemon);
+                setTimeout(() => {
+                    grid.appendChild(card);
+                    card.offsetHeight;
+                    card.style.opacity = '1';
+                    card.style.transform = 'translateY(0)';
+                }, index * 20);
+            });
+        }
+
+        // Event listeners para pesquisa
+        document.getElementById('pokemon-search').addEventListener('input', function(e) {
+            const query = e.target.value;
+
+            // Mostrar/esconder botão de limpar
+            document.getElementById('clear-search').style.display = query ? 'block' : 'none';
+
+            // Cancelar pesquisa anterior
+            if (searchTimeout) {
+                clearTimeout(searchTimeout);
+            }
+
+            // Pesquisar com delay para evitar muitas requisições
+            searchTimeout = setTimeout(() => {
+                if (query.length >= 2) {
+                    searchPokemons(query);
+                } else if (query.length === 0) {
+                    clearSearch();
+                }
+            }, 300);
+        });
+
+        document.getElementById('clear-search').addEventListener('click', clearSearch);
+
+        // Função para carregar mais Pokémon (apenas quando não estiver pesquisando)
         async function loadMorePokemon() {
-            if (loading || !hasMoreData) return;
+            if (loading || !hasMoreData || isSearching) return;
 
             loading = true;
             document.getElementById('loading-indicator').style.display = 'block';
@@ -315,10 +360,8 @@
 
                 data.forEach((pokemon, index) => {
                     const card = createPokemonCard(pokemon);
-                    // Adicionar delay escalonado para animação suave
                     setTimeout(() => {
                         grid.appendChild(card);
-                        // Forçar reflow e então mostrar o card
                         card.offsetHeight;
                         card.style.opacity = '1';
                         card.style.transform = 'translateY(0)';
@@ -326,8 +369,6 @@
                 });
 
                 currentOffset += data.length;
-
-                // Atualizar contador
                 document.getElementById('pokemon-count').textContent = currentOffset;
 
             } catch (error) {
@@ -401,13 +442,14 @@
             return card;
         }
 
-        // Detectar scroll para carregamento infinito
+        // Detectar scroll para carregamento infinito (apenas quando não estiver pesquisando)
         function handleScroll() {
+            if (isSearching) return;
+
             const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
             const windowHeight = window.innerHeight;
             const documentHeight = document.documentElement.scrollHeight;
 
-            // Carregar quando estiver próximo do final da página (200px antes)
             if (scrollTop + windowHeight >= documentHeight - 200) {
                 loadMorePokemon();
             }
@@ -418,6 +460,18 @@
 
         // Carregamento inicial quando a página estiver totalmente carregada
         document.addEventListener('DOMContentLoaded', function() {
+            // Carregar Pokémons iniciais
+            const grid = document.getElementById('pokemon-grid');
+            originalPokemons.forEach((pokemon, index) => {
+                const card = createPokemonCard(pokemon);
+                setTimeout(() => {
+                    grid.appendChild(card);
+                    card.offsetHeight;
+                    card.style.opacity = '1';
+                    card.style.transform = 'translateY(0)';
+                }, index * 50);
+            });
+
             console.log('Pokédex carregada com', currentOffset, 'Pokémon');
         });
   </script>
