@@ -13,6 +13,9 @@
                 <div>
                     <h2 class="text-3xl font-bold text-white">
                         Meu Time
+                        @if(isset($selectedGame) && $selectedGame)
+                        <span class="text-lg text-purple-400">({{ $selectedGame }})</span>
+                        @endif
                     </h2>
                     <p class="text-purple-100">Selecione seus 6 Pokémon principais</p>
                 </div>
@@ -37,6 +40,34 @@
             <div
                 class="mb-4 flex items-center gap-2 rounded-xl border border-red-500/50 bg-red-500/20 px-4 py-3 text-red-200 backdrop-blur-sm">
                 {{ session('error') }}
+            </div>
+            @endif
+
+            <!-- Filtro por Jogo -->
+            @if(isset($userGames) && $userGames->count() > 0)
+            <div
+                class="mb-6 overflow-hidden border border-slate-700 bg-slate-800/50 shadow-xl backdrop-blur-sm sm:rounded-2xl">
+                <div class="p-4">
+                    <form method="GET" action="{{ route('pokemons.team') }}" class="flex flex-wrap items-center gap-4">
+                        <label for="game" class="text-sm font-medium text-slate-300">Filtrar por Jogo:</label>
+                        <select name="game" id="game"
+                            class="rounded-md border-slate-600 bg-slate-700 text-white focus:border-yellow-500 focus:ring-yellow-500"
+                            onchange="this.form.submit()">
+                            <option value="">Todos os Jogos</option>
+                            @foreach($userGames as $game)
+                            <option value="{{ $game }}" {{ (isset($selectedGame) && $selectedGame==$game) ? 'selected'
+                                : '' }}>
+                                {{ $game }}
+                            </option>
+                            @endforeach
+                        </select>
+                        @if(isset($selectedGame) && $selectedGame)
+                        <a href="{{ route('pokemons.team') }}" class="text-sm text-purple-400 hover:text-purple-300">
+                            Limpar Filtro
+                        </a>
+                        @endif
+                    </form>
+                </div>
             </div>
             @endif
 

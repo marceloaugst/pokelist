@@ -5,7 +5,8 @@
             <div class="flex">
                 <!-- Logo -->
                 <div class="flex shrink-0 items-center">
-                    <a href="{{ route('pokemons.index') }}" class="group flex items-center gap-3">
+                    <a href="{{ auth()->check() ? route('pokemons.index') : route('home') }}"
+                        class="group flex items-center gap-3">
                         <x-application-logo
                             class="block h-10 w-10 transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110" />
                         <span

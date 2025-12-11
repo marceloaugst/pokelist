@@ -143,17 +143,19 @@
                                 <span class="text-white font-semibold">{{ ucfirst(str_replace('-', ' ', $pokemonData['growth_rate'] ?? 'N/A')) }}</span>
                             </div>
                             
-                            @if(isset($pokemonData['ev_yield']) && !empty($pokemonData['ev_yield']))
+                            @if(isset($pokemonData['ev_yield']) && !empty($pokemonData['ev_yield']) && $pokemonData['ev_yield'] !== 'None')
                                 <div>
                                     <span class="text-slate-300 block mb-2">EV Yield</span>
                                     <div class="flex flex-wrap gap-1">
-                                        @foreach($pokemonData['ev_yield'] as $stat => $value)
-                                            @if($value > 0)
-                                                <span class="bg-blue-600 text-white px-2 py-1 rounded text-xs">
-                                                    {{ ucfirst(str_replace('_', ' ', $stat)) }}: +{{ $value }}
-                                                </span>
-                                            @endif
-                                        @endforeach
+                                        @php
+                                            $evYieldStr = $pokemonData['ev_yield'];
+                                            if (is_string($evYieldStr)) {
+                                                $evItems = array_filter(explode(', ', $evYieldStr));
+                                                foreach ($evItems as $evItem) {
+                                                    echo '<span class="bg-blue-600 text-white px-2 py-1 rounded text-xs">' . htmlspecialchars($evItem) . '</span>';
+                                                }
+                                            }
+                                        @endphp
                                     </div>
                                 </div>
                             @endif
@@ -226,42 +228,54 @@
                             Cadeia de Evolução
                         </h3>
                         
-                        <div class="overflow-x-auto">
-                            <div class="flex items-center gap-4 min-w-max">
+                        <div class="w-full overflow-x-auto pb-2">
+                            <div class="flex items-stretch justify-center gap-0 min-w-max px-4">
                                 @foreach($pokemonData['evolution_chain'] as $index => $evolution)
-                                    <div class="text-center flex-shrink-0">
-                                        <div class="relative">
-                                            <!-- Destaque para o Pokémon atual -->
-                                            @if(strtolower($evolution['name']) === strtolower($pokemonData['name']))
-                                                <div class="absolute -inset-2 bg-blue-500/20 rounded-full ring-2 ring-blue-400"></div>
-                                            @endif
-                                            
-                                            <div class="relative w-20 h-20 mx-auto mb-2 flex items-center justify-center rounded-full bg-slate-700">
-                                                @if(isset($evolution['sprite']))
-                                                    <img src="{{ $evolution['sprite'] }}" alt="{{ $evolution['name'] }}" 
-                                                         class="w-16 h-16 object-contain">
-                                                @else
-                                                    <span class="text-2xl text-slate-400">?</span>
+                                    <!-- Pokémon da Cadeia -->
+                                    <div class="flex flex-col items-center">
+                                        <a href="{{ route('pokedex.pokemon.show', $evolution['id']) }}" 
+                                           class="group text-center flex-shrink-0 transition-all duration-300 hover:scale-110">
+                                            <div class="relative">
+                                                <!-- Destaque para o Pokémon atual -->
+                                                @if(strtolower($evolution['name']) === strtolower($pokemonData['name']))
+                                                    <div class="absolute -inset-3 bg-blue-500/30 rounded-full ring-2 ring-blue-400 animate-pulse"></div>
                                                 @endif
+                                                
+                                                <div class="relative w-24 h-24 mx-auto mb-3 flex items-center justify-center rounded-full bg-gradient-to-br from-slate-700 to-slate-800 shadow-lg shadow-slate-900/50 ring-2 ring-slate-600 group-hover:ring-blue-500 transition-all duration-300">
+                                                    @if(isset($evolution['sprite']))
+                                                        <img src="{{ $evolution['sprite'] }}" alt="{{ $evolution['name'] }}" 
+                                                             class="w-20 h-20 object-contain drop-shadow-lg">
+                                                    @else
+                                                        <span class="text-3xl text-slate-400">?</span>
+                                                    @endif
+                                                </div>
                                             </div>
-                                        </div>
-                                        
-                                        <div class="text-white font-semibold text-sm">{{ ucfirst($evolution['name']) }}</div>
-                                        
-                                        @if($evolution['stage'] > 1)
-                                            <div class="text-xs text-slate-400 mt-1">
-                                                Nível {{ $evolution['level'] ?? '?' }}
+                                            
+                                            <div class="text-white font-semibold text-sm group-hover:text-blue-400 transition-colors duration-200">
+                                                {{ ucfirst($evolution['name']) }}
                                             </div>
-                                        @endif
+                                            
+                                            @if($evolution['stage'] > 1)
+                                                <div class="text-xs text-slate-400 mt-1 group-hover:text-slate-300 transition-colors duration-200">
+                                                    Nível {{ $evolution['level'] ?? '?' }}
+                                                </div>
+                                            @else
+                                                <div class="text-xs text-slate-500 mt-1">
+                                                    Estágio 1
+                                                </div>
+                                            @endif
+                                        </a>
                                     </div>
 
                                     <!-- Seta para próxima evolução -->
                                     @if($index < count($pokemonData['evolution_chain']) - 1)
-                                        <div class="flex-shrink-0 text-slate-400">
-                                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                                      d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
-                                            </svg>
+                                        <div class="flex items-center flex-shrink-0 mx-2">
+                                            <div class="flex items-center justify-center h-full">
+                                                <svg class="w-8 h-8 text-slate-500 group-hover:text-slate-300 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                          d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
+                                                </svg>
+                                            </div>
                                         </div>
                                     @endif
                                 @endforeach
@@ -392,6 +406,15 @@
             transition: all 1s ease-out;
         }
         
+        /* Grupo de hover para evolução */
+        .group:hover .group-hover\:text-blue-400 {
+            color: rgb(96, 165, 250);
+        }
+        
+        .group:hover .group-hover\:text-slate-300 {
+            color: rgb(203, 213, 225);
+        }
+        
         /* Entrada suave dos elementos */
         @keyframes fadeInUp {
             from {
@@ -402,6 +425,20 @@
                 opacity: 1;
                 transform: translateY(0);
             }
+        }
+        
+        /* Animação do pulso */
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: .5;
+            }
+        }
+        
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
         
         .overflow-hidden > .p-6 > * {

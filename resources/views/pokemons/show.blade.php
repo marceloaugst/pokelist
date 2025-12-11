@@ -869,9 +869,9 @@
             };
 
             const categoryIcons = {
-                'physical': '⚔️',
-                'special': '✨',
-                'status': '🛡️'
+                'physical': '<img src="{{ asset("images/move-physical.png") }}" alt="Physical" class="w-5 h-5 inline-block">',
+                'special': '<img src="{{ asset("images/move-special.png") }}" alt="Special" class="w-5 h-5 inline-block">',
+                'status': '<img src="{{ asset("images/move-status.png") }}" alt="Status" class="w-5 h-5 inline-block">'
             };
 
             let tableHtml = `

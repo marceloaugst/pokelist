@@ -20,10 +20,27 @@ class PokemonController extends Controller
         $this->pokeApi = $pokeApi;
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        $pokemons = Auth::user()->userPokemons()->latest()->paginate(12);
-        return view('pokemons.index', compact('pokemons'));
+        $query = Auth::user()->userPokemons();
+
+        // Filtrar por jogo se especificado
+        $selectedGame = $request->get('game');
+        if ($selectedGame) {
+            $query->where('game_name', $selectedGame);
+        }
+
+        $pokemons = $query->latest()->paginate(12);
+
+        // Buscar jogos únicos do usuário
+        $userGames = Auth::user()->userPokemons()
+            ->select('game_name')
+            ->distinct()
+            ->whereNotNull('game_name')
+            ->orderBy('game_name')
+            ->pluck('game_name');
+
+        return view('pokemons.index', compact('pokemons', 'userGames', 'selectedGame'));
     }
 
     public function create(Request $request)
@@ -277,6 +294,26 @@ class PokemonController extends Controller
         return response()->json($pokemons);
     }
 
+    public function showPokedexPokemon($pokemonId)
+    {
+        // Buscar dados do Pokémon da API
+        $pokemonData = $this->pokeApi->getPokemon($pokemonId);
+
+        if (!$pokemonData) {
+            abort(404, 'Pokémon não encontrado');
+        }
+
+        // Verificar se o usuário está logado e se possui este pokémon
+        $userPokemon = null;
+        if (auth()->check()) {
+            $userPokemon = auth()->user()->userPokemons()
+                ->where('pokemon_id', $pokemonId)
+                ->first();
+        }
+
+        return view('pokedex.pokemon-show', compact('pokemonData', 'userPokemon'));
+    }
+
     private function loadPokemonsFromApi($limit, $offset)
     {
         $pokemons = [];
@@ -312,10 +349,21 @@ class PokemonController extends Controller
         return $pokemons;
     }
 
-    public function team()
+    public function team(Request $request)
     {
         $user = Auth::user();
-        $teamPokemons = $user->teamPokemons()->get();
+
+        // Filtrar por jogo se especificado
+        $selectedGame = $request->get('game');
+        $teamQuery = $user->teamPokemons();
+
+        if ($selectedGame) {
+            $teamQuery->whereHas('userPokemon', function ($query) use ($selectedGame) {
+                $query->where('game_name', $selectedGame);
+            });
+        }
+
+        $teamPokemons = $teamQuery->get();
 
         // Criar array com 6 posições
         $team = [];
@@ -323,6 +371,14 @@ class PokemonController extends Controller
             $teamPokemon = $teamPokemons->firstWhere('position', $i);
             $team[$i] = $teamPokemon ? $teamPokemon->userPokemon : null;
         }
+
+        // Buscar jogos únicos do usuário para o time
+        $userGames = $user->userPokemons()
+            ->select('game_name')
+            ->distinct()
+            ->whereNotNull('game_name')
+            ->orderBy('game_name')
+            ->pluck('game_name');
 
         // Definir trainer baseado no gênero
         $trainerData = [
@@ -333,7 +389,7 @@ class PokemonController extends Controller
             'gender' => $user->gender
         ];
 
-        return view('pokemons.team', compact('team', 'trainerData'));
+        return view('pokemons.team', compact('team', 'trainerData', 'userGames', 'selectedGame'));
     }
 
     public function addToTeam(Request $request, UserPokemon $pokemon)
