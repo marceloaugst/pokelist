@@ -53,6 +53,53 @@ class PokeApiService
         'fairy' => ['poison' => 2, 'steel' => 2, 'fighting' => 0.5, 'bug' => 0.5, 'dark' => 0.5, 'dragon' => 0],
     ];
 
+    /**
+     * Resumo leve de vários Pokémon (uma chamada HTTP por Pokémon, em paralelo).
+     * Usado na listagem da Pokédex: id, nome, sprite, tipos e cores.
+     */
+    public function getPokemonSummaries(int $limit, int $offset): array
+    {
+        $ids = range($offset + 1, min($offset + $limit, 1025));
+
+        if (empty($ids)) {
+            return [];
+        }
+
+        $responses = Http::pool(function ($pool) use ($ids) {
+            foreach ($ids as $id) {
+                $pool->as((string) $id)
+                    ->withOptions(['verify' => false])
+                    ->timeout(8)
+                    ->get(self::BASE_URL . "/pokemon/{$id}");
+            }
+        });
+
+        $summaries = [];
+
+        foreach ($ids as $id) {
+            $response = $responses[(string) $id] ?? null;
+
+            if (!$response instanceof \Illuminate\Http\Client\Response || !$response->successful()) {
+                continue;
+            }
+
+            $data = $response->json();
+            $types = collect($data['types'])->pluck('type.name')->toArray();
+
+            $summaries[] = [
+                'id' => $data['id'],
+                'name' => ucfirst($data['name']),
+                'sprite' => $data['sprites']['other']['official-artwork']['front_default']
+                    ?? $data['sprites']['front_default']
+                    ?? null,
+                'types' => $types,
+                'type_colors' => collect($types)->mapWithKeys(fn($type) => [$type => self::TYPE_COLORS[$type] ?? '#777'])->toArray(),
+            ];
+        }
+
+        return $summaries;
+    }
+
     public function getPokemon($id)
     {
         try {
@@ -616,17 +663,52 @@ class PokeApiService
             return [];
         }
 
+        $forms = $megaPokemon[$name];
+
+        $responses = Http::pool(function ($pool) use ($forms) {
+            foreach ($forms as $form) {
+                $pool->as($form)
+                    ->withOptions(['verify' => false])
+                    ->timeout(8)
+                    ->get(self::BASE_URL . "/pokemon/{$form}");
+            }
+        });
+
         $megas = [];
-        foreach ($megaPokemon[$name] as $megaForm) {
-            // Extrair o nome bonito da mega
+        foreach ($forms as $megaForm) {
             $displayName = ucwords(str_replace('-', ' ', $megaForm));
-            $displayName = str_replace(['Mega X', 'Mega Y'], ['Mega X', 'Mega Y'], $displayName);
             $displayName = str_replace('Primal', 'Forma Primitiva', $displayName);
 
-            $megas[] = [
+            $mega = [
                 'name' => $displayName,
                 'form' => $megaForm,
+                'sprite' => null,
+                'types' => [],
+                'type_colors' => [],
+                'stats' => null,
             ];
+
+            $response = $responses[$megaForm] ?? null;
+            if ($response instanceof \Illuminate\Http\Client\Response && $response->successful()) {
+                $data = $response->json();
+                $types = collect($data['types'])->pluck('type.name')->toArray();
+
+                $mega['sprite'] = $data['sprites']['other']['official-artwork']['front_default']
+                    ?? $data['sprites']['front_default']
+                    ?? null;
+                $mega['types'] = $types;
+                $mega['type_colors'] = collect($types)->mapWithKeys(fn($type) => [$type => self::TYPE_COLORS[$type] ?? '#777'])->toArray();
+                $mega['stats'] = [
+                    'hp' => $this->getStat($data['stats'], 'hp'),
+                    'attack' => $this->getStat($data['stats'], 'attack'),
+                    'defense' => $this->getStat($data['stats'], 'defense'),
+                    'sp_attack' => $this->getStat($data['stats'], 'special-attack'),
+                    'sp_defense' => $this->getStat($data['stats'], 'special-defense'),
+                    'speed' => $this->getStat($data['stats'], 'speed'),
+                ];
+            }
+
+            $megas[] = $mega;
         }
 
         return $megas;

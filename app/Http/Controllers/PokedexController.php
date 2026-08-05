@@ -1,0 +1,72 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Services\PokeApiService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Inertia\Inertia;
+
+class PokedexController extends Controller
+{
+    private const MAX_POKEMON = 1025;
+
+    public function __construct(private PokeApiService $pokeApi)
+    {
+    }
+
+    /**
+     * Tela principal da Pokédex (Inertia/React).
+     * A lista é carregada pelo cliente via /pokedex/list.
+     */
+    public function index()
+    {
+        return Inertia::render('Pokedex/Index', [
+            'total' => self::MAX_POKEMON,
+        ]);
+    }
+
+    /**
+     * Lote de Pokémon para a lista (JSON, com cache em arquivo).
+     */
+    public function list(Request $request)
+    {
+        $offset = max(0, (int) $request->get('offset', 0));
+        $limit = min(60, max(1, (int) $request->get('limit', 30)));
+
+        $pokemons = Cache::store('file')->remember(
+            "pokedex_list_{$offset}_{$limit}",
+            now()->addWeek(),
+            fn() => $this->pokeApi->getPokemonSummaries($limit, $offset)
+        );
+
+        return response()->json([
+            'pokemons' => $pokemons,
+            'offset' => $offset,
+            'limit' => $limit,
+            'total' => self::MAX_POKEMON,
+        ]);
+    }
+
+    /**
+     * Detalhes completos de um Pokémon (JSON, com cache em arquivo).
+     */
+    public function show(int $pokemonId)
+    {
+        if ($pokemonId < 1 || $pokemonId > self::MAX_POKEMON) {
+            return response()->json(['error' => 'Pokémon não encontrado'], 404);
+        }
+
+        $pokemon = Cache::store('file')->remember(
+            "pokedex_pokemon_{$pokemonId}",
+            now()->addDay(),
+            fn() => $this->pokeApi->getPokemon($pokemonId)
+        );
+
+        if (!$pokemon) {
+            return response()->json(['error' => 'Pokémon não encontrado'], 404);
+        }
+
+        return response()->json($pokemon);
+    }
+}
