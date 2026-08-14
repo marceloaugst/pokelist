@@ -59,7 +59,45 @@ class PokeApiService
      */
     public function getPokemonSummaries(int $limit, int $offset): array
     {
-        $ids = range($offset + 1, min($offset + $limit, 1025));
+        if ($offset >= 1025) {
+            return [];
+        }
+
+        return $this->getSummariesByIds(range($offset + 1, min($offset + $limit, 1025)));
+    }
+
+    /**
+     * Índice leve (id + nome) de todos os Pokémon, usado na busca por nome.
+     */
+    public function getNameIndex(): array
+    {
+        try {
+            $response = Http::withOptions(['verify' => false])
+                ->timeout(15)
+                ->get(self::BASE_URL . '/pokemon', ['limit' => 1025, 'offset' => 0]);
+
+            if (!$response->successful()) {
+                return [];
+            }
+
+            return collect($response->json('results', []))
+                ->map(fn($pokemon, $index) => [
+                    'id' => $index + 1,
+                    'name' => $pokemon['name'],
+                ])
+                ->all();
+        } catch (\Exception $e) {
+            Log::error('Erro ao carregar índice de Pokémon', ['error' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * Resumo leve de um conjunto arbitrário de IDs (uma chamada HTTP por Pokémon, em paralelo).
+     */
+    public function getSummariesByIds(array $ids): array
+    {
+        $ids = array_values(array_filter($ids, fn($id) => $id >= 1 && $id <= 1025));
 
         if (empty($ids)) {
             return [];

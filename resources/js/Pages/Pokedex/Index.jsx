@@ -8,6 +8,9 @@ const BATCH_SIZE = 30;
 export default function Index({ total }) {
     const [pokemons, setPokemons] = useState([]);
     const [listLoading, setListLoading] = useState(false);
+    const [query, setQuery] = useState('');
+    const [results, setResults] = useState([]);
+    const [searchLoading, setSearchLoading] = useState(false);
     const [selectedId, setSelectedId] = useState(null);
     const [detail, setDetail] = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
@@ -16,6 +19,10 @@ export default function Index({ total }) {
     const loadingRef = useRef(false);
     const listRef = useRef(null);
     const detailRequestRef = useRef(0);
+    const searchRequestRef = useRef(0);
+
+    const searching = query.trim() !== '';
+    const visiblePokemons = searching ? results : pokemons;
 
     const loadMore = useCallback(async () => {
         if (loadingRef.current || offsetRef.current >= total) return;
@@ -45,14 +52,58 @@ export default function Index({ total }) {
         loadMore();
     }, [loadMore]);
 
+    // Busca com debounce: cada tecla filtra os Pokémon cujo nome começa com o texto
+    useEffect(() => {
+        const term = query.trim();
+
+        if (term === '') {
+            setResults([]);
+            setSearchLoading(false);
+            searchRequestRef.current++;
+            return;
+        }
+
+        setSearchLoading(true);
+        const requestId = ++searchRequestRef.current;
+
+        const timer = setTimeout(async () => {
+            try {
+                const response = await fetch(
+                    `/pokedex/search?q=${encodeURIComponent(term)}`,
+                    { headers: { Accept: 'application/json' } }
+                );
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+
+                if (requestId === searchRequestRef.current) {
+                    setResults(data.pokemons);
+                }
+            } catch (error) {
+                console.error('Erro ao buscar Pokémon', error);
+                if (requestId === searchRequestRef.current) {
+                    setResults([]);
+                }
+            } finally {
+                if (requestId === searchRequestRef.current) {
+                    setSearchLoading(false);
+                }
+            }
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [query]);
+
     const handleScroll = useCallback(() => {
+        if (searching) return;
+
         const el = listRef.current;
         if (!el) return;
 
         if (el.scrollTop + el.clientHeight >= el.scrollHeight - 400) {
             loadMore();
         }
-    }, [loadMore]);
+    }, [loadMore, searching]);
 
     const selectPokemon = useCallback(async (id) => {
         setSelectedId(id);
@@ -99,8 +150,32 @@ export default function Index({ total }) {
                             Pokédex
                         </h1>
                     </div>
+                    <div className="relative ml-auto w-full max-w-xs">
+                        <input
+                            type="search"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            placeholder="Buscar Pokémon…"
+                            aria-label="Buscar Pokémon pelo nome ou número"
+                            className="w-full rounded-full border border-white/25 bg-white/15 py-2 pl-10 pr-4 font-display text-sm text-white placeholder-white/60 shadow-inner outline-none backdrop-blur-sm transition focus:border-white/50 focus:bg-white/25"
+                        />
+                        <svg
+                            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/70"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                        >
+                            <circle cx="11" cy="11" r="7" />
+                            <path d="m20 20-3.5-3.5" />
+                        </svg>
+                    </div>
+
                     <p className="hidden font-display text-xs uppercase tracking-widest text-white/70 sm:block">
-                        {pokemons.length} / {total} Pokémon
+                        {searching
+                            ? `${results.length} encontrado(s)`
+                            : `${pokemons.length} / ${total} Pokémon`}
                     </p>
                 </header>
 
@@ -123,7 +198,7 @@ export default function Index({ total }) {
                             className="dex-scroll h-full overflow-y-auto rounded-3xl bg-dex-900/25 p-4 shadow-[inset_0_2px_10px_rgba(0,30,50,0.35)] backdrop-blur-sm"
                         >
                             <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 xl:grid-cols-5">
-                                {pokemons.map((pokemon) => (
+                                {visiblePokemons.map((pokemon) => (
                                     <PokemonCard
                                         key={pokemon.id}
                                         pokemon={pokemon}
@@ -133,7 +208,13 @@ export default function Index({ total }) {
                                 ))}
                             </div>
 
-                            {listLoading && (
+                            {searching && !searchLoading && results.length === 0 && (
+                                <p className="py-10 text-center font-display text-xs uppercase tracking-[0.25em] text-white/70">
+                                    Nenhum Pokémon encontrado
+                                </p>
+                            )}
+
+                            {(searching ? searchLoading : listLoading) && (
                                 <div className="flex items-center justify-center gap-3 py-6">
                                     <span
                                         className="pokeball-watermark h-8 w-8 animate-spin"
