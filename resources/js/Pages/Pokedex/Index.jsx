@@ -5,6 +5,12 @@ import PokemonDetail from '../../Components/PokemonDetail';
 
 const BATCH_SIZE = 30;
 
+const fetchJson = async (url) => {
+    const response = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+};
+
 export default function Index({ total }) {
     const [pokemons, setPokemons] = useState([]);
     const [listLoading, setListLoading] = useState(false);
@@ -14,12 +20,17 @@ export default function Index({ total }) {
     const [selectedId, setSelectedId] = useState(null);
     const [detail, setDetail] = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
+    const [moves, setMoves] = useState(null);
+    const [movesLoading, setMovesLoading] = useState(false);
 
     const offsetRef = useRef(0);
     const loadingRef = useRef(false);
     const listRef = useRef(null);
     const detailRequestRef = useRef(0);
     const searchRequestRef = useRef(0);
+    // Evita refazer as requisições ao voltar num Pokémon já visto
+    const detailCacheRef = useRef(new Map());
+    const movesCacheRef = useRef(new Map());
 
     const searching = query.trim() !== '';
     const visiblePokemons = searching ? results : pokemons;
@@ -107,32 +118,52 @@ export default function Index({ total }) {
 
     const selectPokemon = useCallback(async (id) => {
         setSelectedId(id);
-        setDetailLoading(true);
 
+        // Ignora respostas antigas se o usuário clicou em outro Pokémon
         const requestId = ++detailRequestRef.current;
+        const isCurrent = () => requestId === detailRequestRef.current;
 
-        try {
-            const response = await fetch(`/pokedex/${id}`, {
-                headers: { Accept: 'application/json' },
+        const cachedDetail = detailCacheRef.current.get(id);
+        const cachedMoves = movesCacheRef.current.get(id);
+
+        setDetail(cachedDetail ?? null);
+        setDetailLoading(!cachedDetail);
+        setMoves(cachedMoves ?? null);
+        setMovesLoading(!cachedMoves);
+
+        // As duas requisições saem juntas: os movimentos não esperam o detalhe
+        const detailPromise = cachedDetail
+            ? Promise.resolve(cachedDetail)
+            : fetchJson(`/pokedex/${id}`);
+        const movesPromise = cachedMoves
+            ? Promise.resolve(cachedMoves)
+            : fetchJson(`/pokedex/${id}/moves`);
+
+        detailPromise
+            .then((data) => {
+                detailCacheRef.current.set(id, data);
+                if (isCurrent()) setDetail(data);
+            })
+            .catch((error) => {
+                console.error('Erro ao carregar detalhes do Pokémon', error);
+                if (isCurrent()) setDetail(null);
+            })
+            .finally(() => {
+                if (isCurrent()) setDetailLoading(false);
             });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-            const data = await response.json();
-
-            // Ignora respostas antigas se o usuário clicou em outro Pokémon
-            if (requestId === detailRequestRef.current) {
-                setDetail(data);
-            }
-        } catch (error) {
-            console.error('Erro ao carregar detalhes do Pokémon', error);
-            if (requestId === detailRequestRef.current) {
-                setDetail(null);
-            }
-        } finally {
-            if (requestId === detailRequestRef.current) {
-                setDetailLoading(false);
-            }
-        }
+        movesPromise
+            .then((data) => {
+                movesCacheRef.current.set(id, data);
+                if (isCurrent()) setMoves(data);
+            })
+            .catch((error) => {
+                console.error('Erro ao carregar movimentos do Pokémon', error);
+                if (isCurrent()) setMoves(null);
+            })
+            .finally(() => {
+                if (isCurrent()) setMovesLoading(false);
+            });
     }, []);
 
     return (
@@ -186,6 +217,8 @@ export default function Index({ total }) {
                             <PokemonDetail
                                 pokemon={detail}
                                 loading={detailLoading}
+                                moves={moves}
+                                movesLoading={movesLoading}
                                 onSelectEvolution={selectPokemon}
                             />
                         </div>

@@ -9,3 +9,6 @@ Route::get('/pokedex/search', [PokedexController::class, 'search'])->name('poked
 Route::get('/pokedex/{pokemonId}', [PokedexController::class, 'show'])
     ->whereNumber('pokemonId')
     ->name('pokedex.show');
+Route::get('/pokedex/{pokemonId}/moves', [PokedexController::class, 'moves'])
+    ->whereNumber('pokemonId')
+    ->name('pokedex.moves');

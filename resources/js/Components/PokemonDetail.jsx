@@ -1,6 +1,8 @@
 import EvolutionChart from './EvolutionChart';
+import PokemonMoves from './PokemonMoves';
 import StatBar from './StatBar';
 import TypeBadge from './TypeBadge';
+import TypeDefenses from './TypeDefenses';
 
 const formatNumber = (id) => String(id).padStart(3, '0');
 
@@ -53,7 +55,7 @@ const STAT_LABELS = [
  * Painel esquerdo: artwork grande, nome, tipos, Abilities, Species,
  * Base Stats, Evolution chart e Mega Evolutions (quando houver).
  */
-export default function PokemonDetail({ pokemon, loading, onSelectEvolution }) {
+export default function PokemonDetail({ pokemon, loading, moves, movesLoading, onSelectEvolution }) {
     if (loading) return <LoadingState />;
     if (!pokemon) return <EmptyState />;
 
@@ -98,6 +100,56 @@ export default function PokemonDetail({ pokemon, loading, onSelectEvolution }) {
 
             {/* Seções roláveis */}
             <div className="dex-scroll mt-4 flex-1 space-y-4 overflow-y-auto pb-4 pr-1">
+                <Section title="Evolution Chart">
+                    <EvolutionChart
+                        chain={pokemon.evolution_chain}
+                        currentId={pokemon.id}
+                        onSelect={onSelectEvolution}
+                    />
+                </Section>
+
+                {pokemon.mega_evolutions?.length > 0 && (
+                    <Section title="Mega Evolution">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            {pokemon.mega_evolutions.map((mega) => (
+                                <div
+                                    key={mega.form}
+                                    className="flex items-center gap-3 rounded-xl bg-black/25 p-3"
+                                >
+                                    {mega.sprite ? (
+                                        <img
+                                            src={mega.sprite}
+                                            alt={mega.name}
+                                            loading="lazy"
+                                            className="h-20 w-20 shrink-0 animate-float object-contain drop-shadow-lg"
+                                        />
+                                    ) : (
+                                        <span className="flex h-20 w-20 items-center justify-center text-3xl">?</span>
+                                    )}
+                                    <div className="min-w-0">
+                                        <p className="truncate font-display text-sm font-bold uppercase italic tracking-wide">
+                                            {mega.name}
+                                        </p>
+                                        <div className="mt-1.5 flex flex-wrap gap-1">
+                                            {(mega.types ?? []).map((type) => (
+                                                <TypeBadge key={type} type={type} size="sm" />
+                                            ))}
+                                        </div>
+                                        {mega.stats && (
+                                            <p className="mt-1.5 text-[11px] text-dex-100/80">
+                                                Total:{' '}
+                                                <span className="font-bold text-yellow-300">
+                                                    {Object.values(mega.stats).reduce((s, v) => s + v, 0)}
+                                                </span>
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </Section>
+                )}
+
                 <Section title="Species">
                     <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
                         <div>
@@ -150,55 +202,19 @@ export default function PokemonDetail({ pokemon, loading, onSelectEvolution }) {
                     </div>
                 </Section>
 
-                <Section title="Evolution Chart">
-                    <EvolutionChart
-                        chain={pokemon.evolution_chain}
-                        currentId={pokemon.id}
-                        onSelect={onSelectEvolution}
+                <Section title="Type Defenses">
+                    <TypeDefenses types={pokemon.types} name={pokemon.name} />
+                </Section>
+
+                <Section title="Moves">
+                    <PokemonMoves
+                        pokemonId={pokemon.id}
+                        name={pokemon.name}
+                        data={moves}
+                        loading={movesLoading}
                     />
                 </Section>
 
-                {pokemon.mega_evolutions?.length > 0 && (
-                    <Section title="Mega Evolution">
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            {pokemon.mega_evolutions.map((mega) => (
-                                <div
-                                    key={mega.form}
-                                    className="flex items-center gap-3 rounded-xl bg-black/25 p-3"
-                                >
-                                    {mega.sprite ? (
-                                        <img
-                                            src={mega.sprite}
-                                            alt={mega.name}
-                                            loading="lazy"
-                                            className="h-20 w-20 shrink-0 animate-float object-contain drop-shadow-lg"
-                                        />
-                                    ) : (
-                                        <span className="flex h-20 w-20 items-center justify-center text-3xl">?</span>
-                                    )}
-                                    <div className="min-w-0">
-                                        <p className="truncate font-display text-sm font-bold uppercase italic tracking-wide">
-                                            {mega.name}
-                                        </p>
-                                        <div className="mt-1.5 flex flex-wrap gap-1">
-                                            {(mega.types ?? []).map((type) => (
-                                                <TypeBadge key={type} type={type} size="sm" />
-                                            ))}
-                                        </div>
-                                        {mega.stats && (
-                                            <p className="mt-1.5 text-[11px] text-dex-100/80">
-                                                Total:{' '}
-                                                <span className="font-bold text-yellow-300">
-                                                    {Object.values(mega.stats).reduce((s, v) => s + v, 0)}
-                                                </span>
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </Section>
-                )}
             </div>
         </div>
     );

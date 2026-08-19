@@ -113,4 +113,23 @@ class PokedexController extends Controller
 
         return response()->json($pokemon);
     }
+
+    /**
+     * Movimentos do Pokémon agrupados por método de aprendizado (JSON, com cache em arquivo).
+     * Endpoint separado porque exige muitas chamadas à PokéAPI.
+     */
+    public function moves(int $pokemonId)
+    {
+        if ($pokemonId < 1 || $pokemonId > self::MAX_POKEMON) {
+            return response()->json(['error' => 'Pokémon não encontrado'], 404);
+        }
+
+        $moves = Cache::store('file')->remember(
+            "pokedex_moves_{$pokemonId}",
+            now()->addWeek(),
+            fn() => $this->pokeApi->getMoves($pokemonId)
+        );
+
+        return response()->json($moves);
+    }
 }

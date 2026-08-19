@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -154,6 +155,14 @@ class PokeApiService
             if ($response->successful()) {
                 $data = $response->json();
                 $types = collect($data['types'])->pluck('type.name')->toArray();
+
+                // Guarda a lista crua de movimentos para o endpoint /moves não
+                // precisar buscar este mesmo Pokémon de novo
+                Cache::store('file')->put(
+                    self::RAW_MOVES_CACHE_PREFIX . $data['id'],
+                    $data['moves'] ?? [],
+                    now()->addWeek()
+                );
 
                 // Buscar sprite do official-artwork
                 $sprite = $data['sprites']['other']['official-artwork']['front_default']
@@ -503,6 +512,288 @@ class PokeApiService
                 'regional_forms' => []
             ];
         }
+    }
+
+    /**
+     * Grupos de versão em ordem cronológica. Usado para mostrar os movimentos
+     * do jogo mais recente em que o Pokémon aparece.
+     */
+    private const VERSION_GROUP_ORDER = [
+        'red-blue', 'yellow',
+        'gold-silver', 'crystal',
+        'ruby-sapphire', 'emerald', 'firered-leafgreen', 'colosseum', 'xd',
+        'diamond-pearl', 'platinum', 'heartgold-soulsilver',
+        'black-white', 'black-2-white-2',
+        'x-y', 'omega-ruby-alpha-sapphire',
+        'sun-moon', 'ultra-sun-ultra-moon', 'lets-go-pikachu-lets-go-eevee',
+        'sword-shield', 'brilliant-diamond-and-shining-pearl', 'legends-arceus',
+        'scarlet-violet',
+    ];
+
+    /** Cache dos detalhes de cada movimento, compartilhado entre todos os Pokémon. */
+    private const MOVE_CACHE_PREFIX = 'move_detail_';
+
+    /** Lista crua de movimentos do Pokémon, reaproveitada da chamada do detalhe. */
+    private const RAW_MOVES_CACHE_PREFIX = 'pokemon_raw_moves_';
+
+    /** Quantos detalhes de movimento buscar em paralelo por lote. */
+    public const MOVE_POOL_SIZE = 60;
+
+    /** Métodos de aprendizado exibidos, na ordem das abas. */
+    private const LEARN_METHODS = [
+        'level-up' => 'level_up',
+        'machine' => 'machine',
+        'egg' => 'egg',
+        'tutor' => 'tutor',
+    ];
+
+    /**
+     * Movimentos do Pokémon agrupados por método de aprendizado
+     * (nível, MT/MO, ovo e tutor), usando o jogo mais recente disponível.
+     */
+    public function getMoves($pokemonIdOrName): array
+    {
+        $empty = ['version_group' => null, 'level_up' => [], 'machine' => [], 'egg' => [], 'tutor' => []];
+
+        try {
+            $endpoint = is_numeric($pokemonIdOrName) ? $pokemonIdOrName : strtolower(trim($pokemonIdOrName));
+
+            // Reaproveita a lista salva pelo detalhe; só busca de novo se não houver
+            $moves = is_numeric($pokemonIdOrName)
+                ? Cache::store('file')->get(self::RAW_MOVES_CACHE_PREFIX . (int) $pokemonIdOrName)
+                : null;
+
+            if ($moves === null) {
+                $response = Http::withOptions(['verify' => false])
+                    ->timeout(15)
+                    ->retry(2, 200)
+                    ->get(self::BASE_URL . "/pokemon/{$endpoint}");
+
+                if (!$response->successful()) {
+                    return $empty;
+                }
+
+                $moves = $response->json('moves', []);
+            }
+
+            if (empty($moves)) {
+                return $empty;
+            }
+
+            $versionGroup = $this->latestVersionGroup($moves);
+
+            // Entradas do jogo escolhido, agrupadas por método de aprendizado
+            $grouped = ['level_up' => [], 'machine' => [], 'egg' => [], 'tutor' => []];
+            $wanted = [];
+
+            foreach ($moves as $moveData) {
+                $moveName = $moveData['move']['name'] ?? null;
+
+                if (!$moveName) {
+                    continue;
+                }
+
+                foreach ($moveData['version_group_details'] ?? [] as $detail) {
+                    if (($detail['version_group']['name'] ?? null) !== $versionGroup) {
+                        continue;
+                    }
+
+                    $method = self::LEARN_METHODS[$detail['move_learn_method']['name'] ?? ''] ?? null;
+
+                    if (!$method || isset($grouped[$method][$moveName])) {
+                        continue;
+                    }
+
+                    $grouped[$method][$moveName] = [
+                        'slug' => $moveName,
+                        'level' => $method === 'level_up' ? (int) ($detail['level_learned_at'] ?? 0) : null,
+                    ];
+                    $wanted[$moveName] = $moveData['move']['url'] ?? (self::BASE_URL . "/move/{$moveName}");
+                }
+            }
+
+            $details = $this->getMoveDetailsBatch($wanted);
+
+            // Junta os dados do movimento e ordena cada grupo
+            foreach ($grouped as $method => $entries) {
+                $list = [];
+
+                foreach ($entries as $slug => $entry) {
+                    $list[] = array_merge(
+                        $details[$slug] ?? $this->defaultMoveDetails($slug),
+                        ['level' => $entry['level']]
+                    );
+                }
+
+                usort($list, fn($a, $b) => $method === 'level_up'
+                    ? [$a['level'], $a['name']] <=> [$b['level'], $b['name']]
+                    : $a['name'] <=> $b['name']);
+
+                $grouped[$method] = $list;
+            }
+
+            return array_merge($grouped, [
+                'version_group' => ucwords(str_replace('-', ' ', $versionGroup)),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Erro ao buscar movimentos do Pokémon', [
+                'pokemon' => $pokemonIdOrName,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $empty;
+        }
+    }
+
+    /** Grupo de versão mais recente entre os movimentos do Pokémon. */
+    private function latestVersionGroup(array $moves): string
+    {
+        $order = array_flip(self::VERSION_GROUP_ORDER);
+        $best = null;
+        $bestRank = -1;
+
+        foreach ($moves as $moveData) {
+            foreach ($moveData['version_group_details'] ?? [] as $detail) {
+                $group = $detail['version_group']['name'] ?? null;
+                $rank = $group !== null ? ($order[$group] ?? -1) : -1;
+
+                if ($rank > $bestRank) {
+                    $best = $group;
+                    $bestRank = $rank;
+                }
+            }
+        }
+
+        return $best ?? self::VERSION_GROUP_ORDER[array_key_last(self::VERSION_GROUP_ORDER)];
+    }
+
+    /**
+     * Detalhes de vários movimentos de uma vez: usa o cache em arquivo e
+     * busca os que faltam em lotes paralelos.
+     *
+     * @param  array<string, string>  $moveUrls  slug => url
+     * @return array<string, array>
+     */
+    public function getMoveDetailsBatch(array $moveUrls): array
+    {
+        if (empty($moveUrls)) {
+            return [];
+        }
+
+        $slugs = array_keys($moveUrls);
+
+        // Uma leitura só no cache em vez de uma por movimento
+        $cached = Cache::store('file')->many(
+            array_map(fn($slug) => self::MOVE_CACHE_PREFIX . $slug, $slugs)
+        );
+
+        $details = [];
+        $missing = [];
+
+        foreach ($slugs as $slug) {
+            $move = $cached[self::MOVE_CACHE_PREFIX . $slug] ?? null;
+
+            if ($move) {
+                $details[$slug] = $move;
+            } else {
+                $missing[$slug] = $moveUrls[$slug];
+            }
+        }
+
+        foreach (array_chunk($missing, self::MOVE_POOL_SIZE, true) as $chunk) {
+            $responses = Http::pool(function ($pool) use ($chunk) {
+                foreach ($chunk as $slug => $url) {
+                    $pool->as($slug)
+                        ->withOptions(['verify' => false])
+                        ->timeout(10)
+                        ->get($url);
+                }
+            });
+
+            $fresh = [];
+
+            foreach ($chunk as $slug => $url) {
+                $response = $responses[$slug] ?? null;
+
+                if (!$response instanceof \Illuminate\Http\Client\Response || !$response->successful()) {
+                    // Não cacheia falhas: o próximo acesso tenta de novo
+                    $details[$slug] = $this->defaultMoveDetails($slug);
+                    continue;
+                }
+
+                $data = $response->json();
+
+                $fresh[self::MOVE_CACHE_PREFIX . $slug] = $details[$slug] = [
+                    'slug' => $slug,
+                    'name' => ucwords(str_replace('-', ' ', $data['name'] ?? $slug)),
+                    'type' => $data['type']['name'] ?? 'normal',
+                    'category' => $data['damage_class']['name'] ?? 'status',
+                    'power' => $data['power'],
+                    'accuracy' => $data['accuracy'],
+                    'pp' => $data['pp'] ?? null,
+                ];
+            }
+
+            if (!empty($fresh)) {
+                Cache::store('file')->putMany($fresh, now()->addMonths(6));
+            }
+        }
+
+        return $details;
+    }
+
+    /**
+     * Todos os movimentos existentes (slug => url), usado para pré-aquecer o cache.
+     */
+    public function getAllMoveUrls(): array
+    {
+        $response = Http::withOptions(['verify' => false])
+            ->timeout(20)
+            ->get(self::BASE_URL . '/move', ['limit' => 2000]);
+
+        if (!$response->successful()) {
+            return [];
+        }
+
+        return collect($response->json('results', []))
+            ->mapWithKeys(fn($move) => [$move['name'] => $move['url']])
+            ->all();
+    }
+
+    /**
+     * Quais destes movimentos ainda não estão no cache.
+     *
+     * @param  array<string, string>  $moveUrls  slug => url
+     * @return array<string, string>
+     */
+    public function filterUncachedMoves(array $moveUrls): array
+    {
+        if (empty($moveUrls)) {
+            return [];
+        }
+
+        $cached = Cache::store('file')->many(
+            array_map(fn($slug) => self::MOVE_CACHE_PREFIX . $slug, array_keys($moveUrls))
+        );
+
+        return array_filter(
+            $moveUrls,
+            fn($slug) => empty($cached[self::MOVE_CACHE_PREFIX . $slug]),
+            ARRAY_FILTER_USE_KEY
+        );
+    }
+
+    private function defaultMoveDetails(string $slug): array
+    {
+        return [
+            'slug' => $slug,
+            'name' => ucwords(str_replace('-', ' ', $slug)),
+            'type' => 'normal',
+            'category' => 'status',
+            'power' => null,
+            'accuracy' => null,
+            'pp' => null,
+        ];
     }
 
     /**
