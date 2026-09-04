@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -53,6 +54,91 @@ class PokeApiService
         'fairy' => ['poison' => 2, 'steel' => 2, 'fighting' => 0.5, 'bug' => 0.5, 'dark' => 0.5, 'dragon' => 0],
     ];
 
+    /**
+     * Resumo leve de vários Pokémon (uma chamada HTTP por Pokémon, em paralelo).
+     * Usado na listagem da Pokédex: id, nome, sprite, tipos e cores.
+     */
+    public function getPokemonSummaries(int $limit, int $offset): array
+    {
+        if ($offset >= 1025) {
+            return [];
+        }
+
+        return $this->getSummariesByIds(range($offset + 1, min($offset + $limit, 1025)));
+    }
+
+    /**
+     * Índice leve (id + nome) de todos os Pokémon, usado na busca por nome.
+     */
+    public function getNameIndex(): array
+    {
+        try {
+            $response = Http::withOptions(['verify' => false])
+                ->timeout(15)
+                ->get(self::BASE_URL . '/pokemon', ['limit' => 1025, 'offset' => 0]);
+
+            if (!$response->successful()) {
+                return [];
+            }
+
+            return collect($response->json('results', []))
+                ->map(fn($pokemon, $index) => [
+                    'id' => $index + 1,
+                    'name' => $pokemon['name'],
+                ])
+                ->all();
+        } catch (\Exception $e) {
+            Log::error('Erro ao carregar índice de Pokémon', ['error' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
+     * Resumo leve de um conjunto arbitrário de IDs (uma chamada HTTP por Pokémon, em paralelo).
+     */
+    public function getSummariesByIds(array $ids): array
+    {
+        $ids = array_values(array_filter($ids, fn($id) => $id >= 1 && $id <= 1025));
+
+        if (empty($ids)) {
+            return [];
+        }
+
+        $responses = Http::pool(function ($pool) use ($ids) {
+            foreach ($ids as $id) {
+                $pool->as((string) $id)
+                    ->withOptions(['verify' => false])
+                    ->timeout(8)
+                    ->get(self::BASE_URL . "/pokemon/{$id}");
+            }
+        });
+
+        $summaries = [];
+
+        foreach ($ids as $id) {
+            $response = $responses[(string) $id] ?? null;
+
+            if (!$response instanceof \Illuminate\Http\Client\Response || !$response->successful()) {
+                continue;
+            }
+
+            $data = $response->json();
+            $types = collect($data['types'])->pluck('type.name')->toArray();
+
+            $summaries[] = [
+                'id' => $data['id'],
+                'name' => ucfirst($data['name']),
+                'sprite' => $data['sprites']['other']['official-artwork']['front_default']
+                    ?? $data['sprites']['front_default']
+                    ?? null,
+                'types' => $types,
+                'type_colors' => collect($types)->mapWithKeys(fn($type) => [$type => self::TYPE_COLORS[$type] ?? '#777'])->toArray(),
+            ];
+        }
+
+        return $summaries;
+    }
+
     public function getPokemon($id)
     {
         try {
@@ -69,6 +155,14 @@ class PokeApiService
             if ($response->successful()) {
                 $data = $response->json();
                 $types = collect($data['types'])->pluck('type.name')->toArray();
+
+                // Guarda a lista crua de movimentos para o endpoint /moves não
+                // precisar buscar este mesmo Pokémon de novo
+                Cache::store('file')->put(
+                    self::RAW_MOVES_CACHE_PREFIX . $data['id'],
+                    $data['moves'] ?? [],
+                    now()->addWeek()
+                );
 
                 // Buscar sprite do official-artwork
                 $sprite = $data['sprites']['other']['official-artwork']['front_default']
@@ -421,6 +515,288 @@ class PokeApiService
     }
 
     /**
+     * Grupos de versão em ordem cronológica. Usado para mostrar os movimentos
+     * do jogo mais recente em que o Pokémon aparece.
+     */
+    private const VERSION_GROUP_ORDER = [
+        'red-blue', 'yellow',
+        'gold-silver', 'crystal',
+        'ruby-sapphire', 'emerald', 'firered-leafgreen', 'colosseum', 'xd',
+        'diamond-pearl', 'platinum', 'heartgold-soulsilver',
+        'black-white', 'black-2-white-2',
+        'x-y', 'omega-ruby-alpha-sapphire',
+        'sun-moon', 'ultra-sun-ultra-moon', 'lets-go-pikachu-lets-go-eevee',
+        'sword-shield', 'brilliant-diamond-and-shining-pearl', 'legends-arceus',
+        'scarlet-violet',
+    ];
+
+    /** Cache dos detalhes de cada movimento, compartilhado entre todos os Pokémon. */
+    private const MOVE_CACHE_PREFIX = 'move_detail_';
+
+    /** Lista crua de movimentos do Pokémon, reaproveitada da chamada do detalhe. */
+    private const RAW_MOVES_CACHE_PREFIX = 'pokemon_raw_moves_';
+
+    /** Quantos detalhes de movimento buscar em paralelo por lote. */
+    public const MOVE_POOL_SIZE = 60;
+
+    /** Métodos de aprendizado exibidos, na ordem das abas. */
+    private const LEARN_METHODS = [
+        'level-up' => 'level_up',
+        'machine' => 'machine',
+        'egg' => 'egg',
+        'tutor' => 'tutor',
+    ];
+
+    /**
+     * Movimentos do Pokémon agrupados por método de aprendizado
+     * (nível, MT/MO, ovo e tutor), usando o jogo mais recente disponível.
+     */
+    public function getMoves($pokemonIdOrName): array
+    {
+        $empty = ['version_group' => null, 'level_up' => [], 'machine' => [], 'egg' => [], 'tutor' => []];
+
+        try {
+            $endpoint = is_numeric($pokemonIdOrName) ? $pokemonIdOrName : strtolower(trim($pokemonIdOrName));
+
+            // Reaproveita a lista salva pelo detalhe; só busca de novo se não houver
+            $moves = is_numeric($pokemonIdOrName)
+                ? Cache::store('file')->get(self::RAW_MOVES_CACHE_PREFIX . (int) $pokemonIdOrName)
+                : null;
+
+            if ($moves === null) {
+                $response = Http::withOptions(['verify' => false])
+                    ->timeout(15)
+                    ->retry(2, 200)
+                    ->get(self::BASE_URL . "/pokemon/{$endpoint}");
+
+                if (!$response->successful()) {
+                    return $empty;
+                }
+
+                $moves = $response->json('moves', []);
+            }
+
+            if (empty($moves)) {
+                return $empty;
+            }
+
+            $versionGroup = $this->latestVersionGroup($moves);
+
+            // Entradas do jogo escolhido, agrupadas por método de aprendizado
+            $grouped = ['level_up' => [], 'machine' => [], 'egg' => [], 'tutor' => []];
+            $wanted = [];
+
+            foreach ($moves as $moveData) {
+                $moveName = $moveData['move']['name'] ?? null;
+
+                if (!$moveName) {
+                    continue;
+                }
+
+                foreach ($moveData['version_group_details'] ?? [] as $detail) {
+                    if (($detail['version_group']['name'] ?? null) !== $versionGroup) {
+                        continue;
+                    }
+
+                    $method = self::LEARN_METHODS[$detail['move_learn_method']['name'] ?? ''] ?? null;
+
+                    if (!$method || isset($grouped[$method][$moveName])) {
+                        continue;
+                    }
+
+                    $grouped[$method][$moveName] = [
+                        'slug' => $moveName,
+                        'level' => $method === 'level_up' ? (int) ($detail['level_learned_at'] ?? 0) : null,
+                    ];
+                    $wanted[$moveName] = $moveData['move']['url'] ?? (self::BASE_URL . "/move/{$moveName}");
+                }
+            }
+
+            $details = $this->getMoveDetailsBatch($wanted);
+
+            // Junta os dados do movimento e ordena cada grupo
+            foreach ($grouped as $method => $entries) {
+                $list = [];
+
+                foreach ($entries as $slug => $entry) {
+                    $list[] = array_merge(
+                        $details[$slug] ?? $this->defaultMoveDetails($slug),
+                        ['level' => $entry['level']]
+                    );
+                }
+
+                usort($list, fn($a, $b) => $method === 'level_up'
+                    ? [$a['level'], $a['name']] <=> [$b['level'], $b['name']]
+                    : $a['name'] <=> $b['name']);
+
+                $grouped[$method] = $list;
+            }
+
+            return array_merge($grouped, [
+                'version_group' => ucwords(str_replace('-', ' ', $versionGroup)),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Erro ao buscar movimentos do Pokémon', [
+                'pokemon' => $pokemonIdOrName,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $empty;
+        }
+    }
+
+    /** Grupo de versão mais recente entre os movimentos do Pokémon. */
+    private function latestVersionGroup(array $moves): string
+    {
+        $order = array_flip(self::VERSION_GROUP_ORDER);
+        $best = null;
+        $bestRank = -1;
+
+        foreach ($moves as $moveData) {
+            foreach ($moveData['version_group_details'] ?? [] as $detail) {
+                $group = $detail['version_group']['name'] ?? null;
+                $rank = $group !== null ? ($order[$group] ?? -1) : -1;
+
+                if ($rank > $bestRank) {
+                    $best = $group;
+                    $bestRank = $rank;
+                }
+            }
+        }
+
+        return $best ?? self::VERSION_GROUP_ORDER[array_key_last(self::VERSION_GROUP_ORDER)];
+    }
+
+    /**
+     * Detalhes de vários movimentos de uma vez: usa o cache em arquivo e
+     * busca os que faltam em lotes paralelos.
+     *
+     * @param  array<string, string>  $moveUrls  slug => url
+     * @return array<string, array>
+     */
+    public function getMoveDetailsBatch(array $moveUrls): array
+    {
+        if (empty($moveUrls)) {
+            return [];
+        }
+
+        $slugs = array_keys($moveUrls);
+
+        // Uma leitura só no cache em vez de uma por movimento
+        $cached = Cache::store('file')->many(
+            array_map(fn($slug) => self::MOVE_CACHE_PREFIX . $slug, $slugs)
+        );
+
+        $details = [];
+        $missing = [];
+
+        foreach ($slugs as $slug) {
+            $move = $cached[self::MOVE_CACHE_PREFIX . $slug] ?? null;
+
+            if ($move) {
+                $details[$slug] = $move;
+            } else {
+                $missing[$slug] = $moveUrls[$slug];
+            }
+        }
+
+        foreach (array_chunk($missing, self::MOVE_POOL_SIZE, true) as $chunk) {
+            $responses = Http::pool(function ($pool) use ($chunk) {
+                foreach ($chunk as $slug => $url) {
+                    $pool->as($slug)
+                        ->withOptions(['verify' => false])
+                        ->timeout(10)
+                        ->get($url);
+                }
+            });
+
+            $fresh = [];
+
+            foreach ($chunk as $slug => $url) {
+                $response = $responses[$slug] ?? null;
+
+                if (!$response instanceof \Illuminate\Http\Client\Response || !$response->successful()) {
+                    // Não cacheia falhas: o próximo acesso tenta de novo
+                    $details[$slug] = $this->defaultMoveDetails($slug);
+                    continue;
+                }
+
+                $data = $response->json();
+
+                $fresh[self::MOVE_CACHE_PREFIX . $slug] = $details[$slug] = [
+                    'slug' => $slug,
+                    'name' => ucwords(str_replace('-', ' ', $data['name'] ?? $slug)),
+                    'type' => $data['type']['name'] ?? 'normal',
+                    'category' => $data['damage_class']['name'] ?? 'status',
+                    'power' => $data['power'],
+                    'accuracy' => $data['accuracy'],
+                    'pp' => $data['pp'] ?? null,
+                ];
+            }
+
+            if (!empty($fresh)) {
+                Cache::store('file')->putMany($fresh, now()->addMonths(6));
+            }
+        }
+
+        return $details;
+    }
+
+    /**
+     * Todos os movimentos existentes (slug => url), usado para pré-aquecer o cache.
+     */
+    public function getAllMoveUrls(): array
+    {
+        $response = Http::withOptions(['verify' => false])
+            ->timeout(20)
+            ->get(self::BASE_URL . '/move', ['limit' => 2000]);
+
+        if (!$response->successful()) {
+            return [];
+        }
+
+        return collect($response->json('results', []))
+            ->mapWithKeys(fn($move) => [$move['name'] => $move['url']])
+            ->all();
+    }
+
+    /**
+     * Quais destes movimentos ainda não estão no cache.
+     *
+     * @param  array<string, string>  $moveUrls  slug => url
+     * @return array<string, string>
+     */
+    public function filterUncachedMoves(array $moveUrls): array
+    {
+        if (empty($moveUrls)) {
+            return [];
+        }
+
+        $cached = Cache::store('file')->many(
+            array_map(fn($slug) => self::MOVE_CACHE_PREFIX . $slug, array_keys($moveUrls))
+        );
+
+        return array_filter(
+            $moveUrls,
+            fn($slug) => empty($cached[self::MOVE_CACHE_PREFIX . $slug]),
+            ARRAY_FILTER_USE_KEY
+        );
+    }
+
+    private function defaultMoveDetails(string $slug): array
+    {
+        return [
+            'slug' => $slug,
+            'name' => ucwords(str_replace('-', ' ', $slug)),
+            'type' => 'normal',
+            'category' => 'status',
+            'power' => null,
+            'accuracy' => null,
+            'pp' => null,
+        ];
+    }
+
+    /**
      * Busca movimentos aprendidos pelo Pokémon de forma otimizada
      */
     public function getLearnedMoves($pokemonIdOrName): array
@@ -616,17 +992,52 @@ class PokeApiService
             return [];
         }
 
+        $forms = $megaPokemon[$name];
+
+        $responses = Http::pool(function ($pool) use ($forms) {
+            foreach ($forms as $form) {
+                $pool->as($form)
+                    ->withOptions(['verify' => false])
+                    ->timeout(8)
+                    ->get(self::BASE_URL . "/pokemon/{$form}");
+            }
+        });
+
         $megas = [];
-        foreach ($megaPokemon[$name] as $megaForm) {
-            // Extrair o nome bonito da mega
+        foreach ($forms as $megaForm) {
             $displayName = ucwords(str_replace('-', ' ', $megaForm));
-            $displayName = str_replace(['Mega X', 'Mega Y'], ['Mega X', 'Mega Y'], $displayName);
             $displayName = str_replace('Primal', 'Forma Primitiva', $displayName);
 
-            $megas[] = [
+            $mega = [
                 'name' => $displayName,
                 'form' => $megaForm,
+                'sprite' => null,
+                'types' => [],
+                'type_colors' => [],
+                'stats' => null,
             ];
+
+            $response = $responses[$megaForm] ?? null;
+            if ($response instanceof \Illuminate\Http\Client\Response && $response->successful()) {
+                $data = $response->json();
+                $types = collect($data['types'])->pluck('type.name')->toArray();
+
+                $mega['sprite'] = $data['sprites']['other']['official-artwork']['front_default']
+                    ?? $data['sprites']['front_default']
+                    ?? null;
+                $mega['types'] = $types;
+                $mega['type_colors'] = collect($types)->mapWithKeys(fn($type) => [$type => self::TYPE_COLORS[$type] ?? '#777'])->toArray();
+                $mega['stats'] = [
+                    'hp' => $this->getStat($data['stats'], 'hp'),
+                    'attack' => $this->getStat($data['stats'], 'attack'),
+                    'defense' => $this->getStat($data['stats'], 'defense'),
+                    'sp_attack' => $this->getStat($data['stats'], 'special-attack'),
+                    'sp_defense' => $this->getStat($data['stats'], 'special-defense'),
+                    'speed' => $this->getStat($data['stats'], 'speed'),
+                ];
+            }
+
+            $megas[] = $mega;
         }
 
         return $megas;
